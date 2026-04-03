@@ -117,7 +117,7 @@ export default function SchedulePage() {
             </div>
             <div className="text-right">
               <div className="text-xs text-gray-500 uppercase font-semibold">Godziny</div>
-              <div className="text-lg font-bold mt-0.5">{myHoursThisWeek}h</div>
+              <div className="text-lg font-bold mt-0.5">{Math.round(myHoursThisWeek)}h</div>
             </div>
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function SchedulePage() {
                             </span>
                             <span className="text-sm font-bold">{startTime} – {endTime}</span>
                           </div>
-                          <span className="text-xs text-gray-500">{shift.hours}h</span>
+                          <span className="text-xs text-gray-500">{Math.round(shift.hours)}h</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {shift.workers.map((w, wi) => {
