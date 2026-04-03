@@ -1,0 +1,20 @@
+-- Uruchom w Supabase → SQL Editor
+
+CREATE TABLE IF NOT EXISTS worker_meals (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  profile_id UUID NOT NULL REFERENCES profiles(id),
+  location_id UUID NOT NULL,
+  meal_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index dla szybkich zapytań
+CREATE INDEX idx_meals_profile ON worker_meals(profile_id, meal_date);
+CREATE INDEX idx_meals_location ON worker_meals(location_id, meal_date);
+
+-- RLS — każdy zalogowany może wstawiać i czytać
+ALTER TABLE worker_meals ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can insert meals" ON worker_meals FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can read meals" ON worker_meals FOR SELECT USING (true);
+CREATE POLICY "Anyone can delete own meals" ON worker_meals FOR DELETE USING (true);
