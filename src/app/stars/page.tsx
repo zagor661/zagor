@@ -28,12 +28,18 @@ const BELT_LEVELS = [
   { min: 120, label: 'Czarny pas',  icon: '⚫', color: 'text-gray-900', bg: 'bg-gray-800', next: null },
 ]
 
-function getBelt(starCount: number) {
+function getBelt(starCount: number, name?: string) {
+  // Yurii starts from orange (+10 bonus)
+  const effective = name && name.toLowerCase().includes('yurii') ? starCount + 10 : starCount
   let belt = BELT_LEVELS[0]
   for (const level of BELT_LEVELS) {
-    if (starCount >= level.min) belt = level
+    if (effective >= level.min) belt = level
   }
   return belt
+}
+
+function getEffectiveStars(starCount: number, name?: string) {
+  return name && name.toLowerCase().includes('yurii') ? starCount + 10 : starCount
 }
 
 export default function StarsPage() {
@@ -155,9 +161,10 @@ export default function StarsPage() {
           <div className="card text-center py-6">
             {(() => {
               const count = starCounts[user.id] || 0
-              const belt = getBelt(count)
+              const belt = getBelt(count, user.full_name)
+              const effective = getEffectiveStars(count, user.full_name)
               const nextBelt = BELT_LEVELS[BELT_LEVELS.indexOf(belt) + 1]
-              const progress = nextBelt ? ((count - belt.min) / (nextBelt.min - belt.min)) * 100 : 100
+              const progress = nextBelt ? ((effective - belt.min) / (nextBelt.min - belt.min)) * 100 : 100
 
               return (
                 <>
@@ -256,11 +263,12 @@ export default function StarsPage() {
               <div className="space-y-3">
                 {workers
                   .map(w => ({ ...w, count: starCounts[w.id] || 0 }))
-                  .sort((a, b) => b.count - a.count)
+                  .sort((a, b) => getEffectiveStars(b.count, b.full_name) - getEffectiveStars(a.count, a.full_name))
                   .map((w, idx) => {
-                    const belt = getBelt(w.count)
+                    const belt = getBelt(w.count, w.full_name)
+                    const effective = getEffectiveStars(w.count, w.full_name)
                     const nextBelt = BELT_LEVELS[BELT_LEVELS.indexOf(belt) + 1]
-                    const progress = nextBelt ? ((w.count - belt.min) / (nextBelt.min - belt.min)) * 100 : 100
+                    const progress = nextBelt ? ((effective - belt.min) / (nextBelt.min - belt.min)) * 100 : 100
 
                     return (
                       <div key={w.id} className="space-y-1">

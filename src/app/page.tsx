@@ -108,13 +108,31 @@ export default function Dashboard() {
   const today = format(new Date(), 'EEEE, d MMMM', { locale: pl })
   const isAdmin = user.role === 'admin' || user.role === 'manager'
 
-  function getRank(name: string) {
+  const BELT_LEVELS = [
+    { min: 0,  label: 'Żółty pas',       color: 'text-yellow-600',  bg: 'bg-yellow-50 border-yellow-300',  chefBg: 'bg-yellow-400' },
+    { min: 10, label: 'Pomarańczowy pas', color: 'text-orange-600',  bg: 'bg-orange-50 border-orange-300',  chefBg: 'bg-orange-400' },
+    { min: 25, label: 'Zielony pas',     color: 'text-green-700',   bg: 'bg-green-50 border-green-300',    chefBg: 'bg-green-500' },
+    { min: 50, label: 'Niebieski pas',   color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-300',      chefBg: 'bg-blue-500' },
+    { min: 80, label: 'Brązowy pas',     color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-300',    chefBg: 'bg-amber-700' },
+    { min: 120,label: 'Czarny pas',      color: 'text-gray-900',    bg: 'bg-gray-100 border-gray-800',     chefBg: 'bg-gray-800' },
+  ]
+
+  function getRank(name: string, stars: number) {
     const n = name.toLowerCase()
+
+    // Jakub = always NINJA
     if (n.includes('jakub')) return { icon: '🥷', label: 'NINJA', color: 'text-gray-900', bg: 'bg-gray-900/5 border-gray-800', chefBg: '' }
-    if (n.includes('yurii')) return { icon: '🍳', label: 'Brązowy pas', color: 'text-amber-800', bg: 'bg-amber-50 border-amber-300', chefBg: 'bg-amber-700' }
-    if (n.includes('piotr')) return { icon: '🍳', label: 'Zielony pas', color: 'text-green-700', bg: 'bg-green-50 border-green-300', chefBg: 'bg-green-500' }
-    if (n.includes('micha')) return { icon: '🍳', label: 'Żółty pas', color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-300', chefBg: 'bg-yellow-400' }
-    return { icon: '🍳', label: 'Nowy kucharz', color: 'text-gray-400', bg: 'bg-gray-50 border-gray-200', chefBg: 'bg-gray-300' }
+
+    // Yurii starts from orange (bonus +10 stars)
+    const effectiveStars = n.includes('yurii') ? stars + 10 : stars
+
+    // Find belt based on effective star count
+    let belt = BELT_LEVELS[0]
+    for (const level of BELT_LEVELS) {
+      if (effectiveStars >= level.min) belt = level
+    }
+
+    return { icon: '🍳', label: belt.label, color: belt.color, bg: belt.bg, chefBg: belt.chefBg }
   }
 
   return (
@@ -208,18 +226,18 @@ export default function Dashboard() {
         </div>
 
         {/* Rank + Stars */}
-        <Link href="/stars" className={`block card border-2 hover:shadow-md transition-shadow ${getRank(user.full_name).bg}`}>
+        <Link href="/stars" className={`block card border-2 hover:shadow-md transition-shadow ${getRank(user.full_name, starCount).bg}`}>
           <div className="flex items-center gap-3">
-            {getRank(user.full_name).chefBg ? (
-              <div className={`w-12 h-12 rounded-xl ${getRank(user.full_name).chefBg} flex items-center justify-center`}>
+            {getRank(user.full_name, starCount).chefBg ? (
+              <div className={`w-12 h-12 rounded-xl ${getRank(user.full_name, starCount).chefBg} flex items-center justify-center`}>
                 <span className="text-2xl">👨‍🍳</span>
               </div>
             ) : (
-              <span className="text-4xl">{getRank(user.full_name).icon}</span>
+              <span className="text-4xl">{getRank(user.full_name, starCount).icon}</span>
             )}
             <div className="flex-1">
               <div className="font-bold text-sm">{user.full_name}</div>
-              <div className={`text-xs font-bold ${getRank(user.full_name).color}`}>{getRank(user.full_name).label}</div>
+              <div className={`text-xs font-bold ${getRank(user.full_name, starCount).color}`}>{getRank(user.full_name, starCount).label}</div>
             </div>
             <div className="text-right">
               <div className="text-lg font-bold">⭐ {starCount}</div>
