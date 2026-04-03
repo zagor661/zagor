@@ -164,18 +164,40 @@ export default function TemperaturePage() {
         setEveningSaved(true)
 
         // Evening save → send full report (morning + evening)
+        // Fetch fresh morning data from DB to avoid stale state
         try {
-          const morningReadings = units
-            .filter(u => morningTemps[u.id] && morningTemps[u.id] !== '')
-            .map(u => ({
-              name: u.name,
-              temperature: morningTemps[u.id],
-              min: u.temp_min,
-              max: u.temp_max,
-              outOfRange: isOutOfRange(u, morningTemps[u.id]),
-              action: morningActions[u.id] || '',
-              shift: 'morning',
-            }))
+          let freshMorningReadings: any[] = []
+          if (morningLogId) {
+            const { data: dbReadings } = await supabase
+              .from('temperature_readings')
+              .select('*, cooling_units:unit_id(name, temp_min, temp_max)')
+              .eq('log_id', morningLogId)
+            if (dbReadings) {
+              freshMorningReadings = dbReadings.map((r: any) => ({
+                name: r.cooling_units?.name || '',
+                temperature: r.temperature,
+                min: r.cooling_units?.temp_min || 0,
+                max: r.cooling_units?.temp_max || 0,
+                outOfRange: r.is_out_of_range,
+                action: r.corrective_action || '',
+                shift: 'morning',
+              }))
+            }
+          }
+          // Fallback to state if DB fetch failed
+          const morningReadings = freshMorningReadings.length > 0
+            ? freshMorningReadings
+            : units
+              .filter(u => morningTemps[u.id] && morningTemps[u.id] !== '')
+              .map(u => ({
+                name: u.name,
+                temperature: morningTemps[u.id],
+                min: u.temp_min,
+                max: u.temp_max,
+                outOfRange: isOutOfRange(u, morningTemps[u.id]),
+                action: morningActions[u.id] || '',
+                shift: 'morning',
+              }))
 
           const eveningReadings = units
             .filter(u => eveningTemps[u.id] && eveningTemps[u.id] !== '')

@@ -11,15 +11,35 @@ export interface User {
   location_name: string
 }
 
+const SESSION_KEY = 'kitchenops_user'
+const SESSION_TIME_KEY = 'kitchenops_login_time'
+const SESSION_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours
+
 export function useUser(redirectIfNoUser = true) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    const stored = localStorage.getItem('kitchenops_user')
+    const stored = localStorage.getItem(SESSION_KEY)
+    const loginTime = localStorage.getItem(SESSION_TIME_KEY)
+
     if (stored) {
-      setUser(JSON.parse(stored))
+      // Check session timeout
+      if (loginTime && Date.now() - parseInt(loginTime) > SESSION_TIMEOUT) {
+        // Session expired
+        localStorage.removeItem(SESSION_KEY)
+        localStorage.removeItem(SESSION_TIME_KEY)
+        if (redirectIfNoUser) router.push('/login')
+      } else {
+        try {
+          setUser(JSON.parse(stored))
+        } catch {
+          localStorage.removeItem(SESSION_KEY)
+          localStorage.removeItem(SESSION_TIME_KEY)
+          if (redirectIfNoUser) router.push('/login')
+        }
+      }
     } else if (redirectIfNoUser) {
       router.push('/login')
     }
@@ -27,12 +47,14 @@ export function useUser(redirectIfNoUser = true) {
   }, [])
 
   const login = (userData: User) => {
-    localStorage.setItem('kitchenops_user', JSON.stringify(userData))
+    localStorage.setItem(SESSION_KEY, JSON.stringify(userData))
+    localStorage.setItem(SESSION_TIME_KEY, Date.now().toString())
     setUser(userData)
   }
 
   const logout = () => {
-    localStorage.removeItem('kitchenops_user')
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_TIME_KEY)
     window.location.href = '/login'
   }
 

@@ -20,6 +20,8 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [attempts, setAttempts] = useState(0)
+  const [locked, setLocked] = useState(false)
 
   useEffect(() => {
     // Check if already logged in
@@ -39,14 +41,24 @@ export default function LoginPage() {
   }, [])
 
   const handleLogin = async () => {
-    if (!selected) return
+    if (!selected || locked) return
     setError('')
 
     if (pin !== selected.pin) {
-      setError('Zły PIN!')
-      setPin('')
+      const newAttempts = attempts + 1
+      setAttempts(newAttempts)
+      if (newAttempts >= 3) {
+        setLocked(true)
+        setError('Zbyt wiele prób! Odczekaj 2 minuty.')
+        setPin('')
+        setTimeout(() => { setLocked(false); setAttempts(0); setError('') }, 120000)
+      } else {
+        setError(`Zły PIN! (próba ${newAttempts}/3)`)
+        setPin('')
+      }
       return
     }
+    setAttempts(0)
 
     // Get location
     const { data: ul } = await supabase
@@ -166,8 +178,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button onClick={handleLogin} disabled={pin.length !== 4} className="btn-orange">
-            Zaloguj się
+          <button onClick={handleLogin} disabled={pin.length !== 4 || locked} className="btn-orange">
+            {locked ? '🔒 Zablokowane' : 'Zaloguj się'}
           </button>
         </div>
       </div>

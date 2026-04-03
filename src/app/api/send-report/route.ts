@@ -11,9 +11,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const to = 'jakub.zagorski@gmail.com'
+    const to = process.env.REPORT_EMAIL || 'jakub.zagorski@gmail.com'
     let subject = ''
     let html = ''
+    let emailOk = false
 
     if (type === 'temperature') {
       const hasBothShifts = data.morningReadings && data.eveningReadings
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
 
     const result = await res.json()
     console.log('>>> Resend status:', res.status, 'result:', JSON.stringify(result))
+    emailOk = res.ok
     if (!res.ok) {
       console.error('Resend error:', result)
     }
@@ -181,7 +183,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, id: result?.id, sheets: sheetsOk })
+    return NextResponse.json({ ok: emailOk || sheetsOk, email: emailOk, sheets: sheetsOk, id: result?.id })
   } catch (err: any) {
     console.error('Email error:', err)
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 })
