@@ -117,6 +117,16 @@ export default function Dashboard() {
               </div>
             </div>
           </Link>
+
+          <Link href="/schedule" className="block card border-2 border-purple-100 bg-purple-50 hover:shadow-md transition-shadow active:scale-98">
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">📅</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Grafik zmianowy</h2>
+                <p className="text-sm text-gray-500">Twoje zmiany i kto z Tobą pracuje</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Quick info */}
