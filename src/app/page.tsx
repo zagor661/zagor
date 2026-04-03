@@ -10,9 +10,20 @@ export default function Dashboard() {
   const { user, loading, logout } = useUser()
   const [showReminder, setShowReminder] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState(0)
+  const [starCount, setStarCount] = useState(0)
 
   useEffect(() => {
     if (!user) return
+
+    // Load star count
+    async function loadStarCount() {
+      const { count } = await supabase
+        .from('worker_stars')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', user!.id)
+      setStarCount(count || 0)
+    }
+    loadStarCount()
 
     // Load pending tasks count
     async function loadPendingTasks() {
@@ -196,22 +207,26 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        {/* Quick info */}
-        <div className={`card border-2 ${getRank(user.full_name).bg}`}>
+        {/* Rank + Stars */}
+        <Link href="/stars" className={`block card border-2 hover:shadow-md transition-shadow ${getRank(user.full_name).bg}`}>
           <div className="flex items-center gap-3">
             {getRank(user.full_name).chefBg ? (
-              <div className={`w-10 h-10 rounded-xl ${getRank(user.full_name).chefBg} flex items-center justify-center`}>
-                <span className="text-xl">👨‍🍳</span>
+              <div className={`w-12 h-12 rounded-xl ${getRank(user.full_name).chefBg} flex items-center justify-center`}>
+                <span className="text-2xl">👨‍🍳</span>
               </div>
             ) : (
-              <span className="text-3xl">{getRank(user.full_name).icon}</span>
+              <span className="text-4xl">{getRank(user.full_name).icon}</span>
             )}
-            <div>
-              <div className="font-bold text-sm">{user.location_name}</div>
+            <div className="flex-1">
+              <div className="font-bold text-sm">{user.full_name}</div>
               <div className={`text-xs font-bold ${getRank(user.full_name).color}`}>{getRank(user.full_name).label}</div>
             </div>
+            <div className="text-right">
+              <div className="text-lg font-bold">⭐ {starCount}</div>
+              <div className="text-xs text-gray-400">{isAdmin ? 'Zarządzaj' : 'Pochwały'}</div>
+            </div>
           </div>
-        </div>
+        </Link>
 
       </div>
     </div>

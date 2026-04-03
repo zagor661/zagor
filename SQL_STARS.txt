@@ -1,0 +1,19 @@
+-- Uruchom w Supabase → SQL Editor
+
+CREATE TABLE IF NOT EXISTS worker_stars (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  profile_id UUID NOT NULL REFERENCES profiles(id),
+  given_by UUID NOT NULL REFERENCES profiles(id),
+  location_id UUID NOT NULL,
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_stars_profile ON worker_stars(profile_id);
+CREATE INDEX idx_stars_location ON worker_stars(location_id);
+
+ALTER TABLE worker_stars ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can read stars" ON worker_stars FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert stars" ON worker_stars FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can delete stars" ON worker_stars FOR DELETE USING (true);
