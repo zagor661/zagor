@@ -97,6 +97,15 @@ export default function Dashboard() {
   const today = format(new Date(), 'EEEE, d MMMM', { locale: pl })
   const isAdmin = user.role === 'admin' || user.role === 'manager'
 
+  function getRank(name: string) {
+    const n = name.toLowerCase()
+    if (n.includes('jakub')) return { icon: '🥷', label: 'NINJA', color: 'text-gray-900', bg: 'bg-gray-900/5 border-gray-800', chefBg: '' }
+    if (n.includes('yurii')) return { icon: '🍳', label: 'Brązowy pas', color: 'text-amber-800', bg: 'bg-amber-50 border-amber-300', chefBg: 'bg-amber-700' }
+    if (n.includes('piotr')) return { icon: '🍳', label: 'Zielony pas', color: 'text-green-700', bg: 'bg-green-50 border-green-300', chefBg: 'bg-green-500' }
+    if (n.includes('micha')) return { icon: '🍳', label: 'Żółty pas', color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-300', chefBg: 'bg-yellow-400' }
+    return { icon: '🍳', label: 'Nowy kucharz', color: 'text-gray-400', bg: 'bg-gray-50 border-gray-200', chefBg: 'bg-gray-300' }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 pb-8">
       <div className="max-w-lg mx-auto space-y-5">
@@ -188,12 +197,18 @@ export default function Dashboard() {
         </div>
 
         {/* Quick info */}
-        <div className="card bg-brand-50 border-2 border-brand-100">
+        <div className={`card border-2 ${getRank(user.full_name).bg}`}>
           <div className="flex items-center gap-3">
-            <span className="text-2xl">📍</span>
+            {getRank(user.full_name).chefBg ? (
+              <div className={`w-10 h-10 rounded-xl ${getRank(user.full_name).chefBg} flex items-center justify-center`}>
+                <span className="text-xl">👨‍🍳</span>
+              </div>
+            ) : (
+              <span className="text-3xl">{getRank(user.full_name).icon}</span>
+            )}
             <div>
               <div className="font-bold text-sm">{user.location_name}</div>
-              <div className="text-xs text-gray-500">{user.role === 'admin' ? '👑 Admin' : user.role === 'manager' ? '⭐ Manager' : '👨‍🍳 Pracownik'}</div>
+              <div className={`text-xs font-bold ${getRank(user.full_name).color}`}>{getRank(user.full_name).label}</div>
             </div>
           </div>
         </div>
