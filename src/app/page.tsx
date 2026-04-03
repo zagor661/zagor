@@ -9,9 +9,21 @@ import supabase from '@/lib/supabase'
 export default function Dashboard() {
   const { user, loading, logout } = useUser()
   const [showReminder, setShowReminder] = useState<string | null>(null)
+  const [pendingTasks, setPendingTasks] = useState(0)
 
   useEffect(() => {
     if (!user) return
+
+    // Load pending tasks count
+    async function loadPendingTasks() {
+      const { count } = await supabase
+        .from('worker_tasks')
+        .select('*', { count: 'exact', head: true })
+        .eq('assigned_to', user!.id)
+        .eq('is_completed', false)
+      setPendingTasks(count || 0)
+    }
+    loadPendingTasks()
 
     async function checkReminders() {
       const now = new Date()
@@ -132,13 +144,23 @@ export default function Dashboard() {
             </div>
           </Link>
 
-          <Link href="/tasks" className="block card border-2 border-amber-100 bg-amber-50 hover:shadow-md transition-shadow active:scale-98">
+          <Link href="/tasks" className={`block card border-2 hover:shadow-md transition-shadow active:scale-98 ${pendingTasks > 0 ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300 animate-pulse-slow' : 'border-amber-100 bg-amber-50'}`}>
             <div className="flex items-center gap-4">
               <span className="text-4xl">📋</span>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Zadania</h2>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-gray-900">Zadania</h2>
+                  {pendingTasks > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {pendingTasks}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">
-                  {isAdmin ? 'Przypisuj i zarządzaj zadaniami' : 'Twoje zadania do wykonania'}
+                  {pendingTasks > 0
+                    ? `Masz ${pendingTasks} ${pendingTasks === 1 ? 'zadanie' : pendingTasks < 5 ? 'zadania' : 'zadań'} do wykonania!`
+                    : isAdmin ? 'Przypisuj i zarządzaj zadaniami' : 'Brak zadań — wszystko zrobione!'
+                  }
                 </p>
               </div>
             </div>
