@@ -18,9 +18,14 @@ export async function GET() {
     }
 
     const text = await res.text()
-    // Google returns JSONP-like: google.visualization.Query.setResponse({...})
-    const jsonStr = text.replace(/^.*google\.visualization\.Query\.setResponse\(/, '').replace(/\);?\s*$/, '')
-    const json = JSON.parse(jsonStr)
+    // Google returns: /*O_o*/ google.visualization.Query.setResponse({...});
+    // Strip everything before the JSON object and the closing );
+    const match = text.match(/google\.visualization\.Query\.setResponse\(({.*})\)/s)
+    if (!match) {
+      console.error('Could not parse Google Sheets response:', text.substring(0, 200))
+      return NextResponse.json({ ok: false, error: 'Nieprawidłowa odpowiedź z Google Sheets' }, { status: 500 })
+    }
+    const json = JSON.parse(match[1])
 
     const rows = json.table.rows
     const cols = json.table.cols
