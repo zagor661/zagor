@@ -1,88 +1,58 @@
 import { NextResponse } from 'next/server'
 
 const SHEET_ID = process.env.SCHEDULE_SHEET_ID || '14PQAd_omauQWHuoMH07CiuTFMKr4a5mduwdh_4F8pY4'
-const SHEET_NAME = process.env.SCHEDULE_SHEET_NAME || 'Grafik zmianowy'
 
 export async function GET() {
   try {
-    // Use Google Sheets public CSV export
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`
+    // Use Google Sheets CSV export — simpler, no JSONP parsing needed
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`
 
     const res = await fetch(url, {
-      next: { revalidate: 300 }, // cache 5 min
+      cache: 'no-store', // always fresh data
     })
 
     if (!res.ok) {
       console.error('Google Sheets fetch failed:', res.status)
-      return NextResponse.json({ ok: false, error: 'Nie udało się pobrać grafiku' }, { status: 500 })
+      return NextResponse.json({ ok: false, error: 'Nie udało się pobrać grafiku. Sprawdź czy arkusz jest udostępniony.' }, { status: 500 })
     }
 
-    const text = await res.text()
-    // Google returns: /*O_o*/ google.visualization.Query.setResponse({...});
-    // Strip everything before the JSON object and the closing );
-    const match = text.match(/google\.visualization\.Query\.setResponse\(({.*})\)/s)
-    if (!match) {
-      console.error('Could not parse Google Sheets response:', text.substring(0, 200))
-      return NextResponse.json({ ok: false, error: 'Nieprawidłowa odpowiedź z Google Sheets' }, { status: 500 })
-    }
-    const json = JSON.parse(match[1])
+    const csv = await res.text()
+    const lines = csv.split('\n').map(line => parseCSVLine(line))
 
-    const rows = json.table.rows
-    const cols = json.table.cols
-
-    // Parse schedule data
-    // Expected columns: Start zmiany, Koniec zmiany, Ilość godzin, Część, Osoby...
+    // Skip header row
     const shifts: any[] = []
 
-    for (const row of rows) {
-      const cells = row.c
-      if (!cells || !cells[0]) continue
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i]
+      if (!cols || cols.length < 5) continue
 
-      // Column A: Start zmiany (date)
-      const startCell = cells[0]
-      if (!startCell || !startCell.v) continue
-
-      let startDate: string
-      if (typeof startCell.v === 'string' && startCell.v.startsWith('Date(')) {
-        // Parse Date(year, month, day, hour, min, sec)
-        const parts = startCell.v.replace('Date(', '').replace(')', '').split(',').map(Number)
-        const d = new Date(parts[0], parts[1], parts[2], parts[3] || 0, parts[4] || 0)
-        startDate = d.toISOString()
-      } else {
-        startDate = String(startCell.v)
-      }
+      // Column A: Start zmiany
+      const startRaw = cols[0]?.trim()
+      if (!startRaw) continue
 
       // Column B: Koniec zmiany
-      const endCell = cells[1]
-      let endDate = ''
-      if (endCell && endCell.v) {
-        if (typeof endCell.v === 'string' && endCell.v.startsWith('Date(')) {
-          const parts = endCell.v.replace('Date(', '').replace(')', '').split(',').map(Number)
-          const d = new Date(parts[0], parts[1], parts[2], parts[3] || 0, parts[4] || 0)
-          endDate = d.toISOString()
-        } else {
-          endDate = String(endCell.v)
-        }
-      }
+      const endRaw = cols[1]?.trim()
 
-      // Column C: Hours
-      const hoursCell = cells[2]
-      const hours = hoursCell && hoursCell.v ? Number(hoursCell.v) : 0
+      // Column C: Ilość godzin
+      const hours = parseFloat(cols[2]?.trim()) || 0
 
-      // Column D: Section (KUCHNIA / SALA)
-      const sectionCell = cells[3]
-      const section = sectionCell && sectionCell.v ? String(sectionCell.v).trim() : ''
+      // Column D: Część (KUCHNIA / SALA)
+      const section = cols[3]?.trim() || ''
 
       // Columns E+: Workers
       const workers: string[] = []
-      for (let i = 4; i < cells.length; i++) {
-        if (cells[i] && cells[i].v) {
-          const name = String(cells[i].v).trim()
-          if (name) workers.push(name)
-        }
+      for (let j = 4; j < cols.length; j++) {
+        const name = cols[j]?.trim()
+        if (name) workers.push(name)
       }
 
       if (workers.length === 0) continue
+
+      // Parse dates
+      const startDate = parseSheetDate(startRaw)
+      const endDate = endRaw ? parseSheetDate(endRaw) : ''
+
+      if (!startDate) continue
 
       shifts.push({
         start: startDate,
@@ -98,4 +68,67 @@ export async function GET() {
     console.error('Schedule API error:', err)
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 })
   }
+}
+
+// Parse CSV line handling quoted fields with commas
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  result.push(current)
+  return result
+}
+
+// Parse various date formats from Google Sheets
+function parseSheetDate(raw: string): string {
+  if (!raw) return ''
+
+  // Try format: "4/1/2026 11:00:00" or "04/01/2026 11:00:00"
+  const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?/)
+  if (usMatch) {
+    const [, month, day, year, hour, min, sec] = usMatch
+    const d = new Date(+year, +month - 1, +day, +hour, +min, +(sec || 0))
+    return d.toISOString()
+  }
+
+  // Try format: "2026-04-01 11:00:00"
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):?(\d{2})?/)
+  if (isoMatch) {
+    const [, year, month, day, hour, min, sec] = isoMatch
+    const d = new Date(+year, +month - 1, +day, +hour, +min, +(sec || 0))
+    return d.toISOString()
+  }
+
+  // Try format: "1.04.2026 11:00" (Polish)
+  const plMatch = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2}):?(\d{2})?/)
+  if (plMatch) {
+    const [, day, month, year, hour, min, sec] = plMatch
+    const d = new Date(+year, +month - 1, +day, +hour, +min, +(sec || 0))
+    return d.toISOString()
+  }
+
+  // Fallback — try native Date parse
+  try {
+    const d = new Date(raw)
+    if (!isNaN(d.getTime())) return d.toISOString()
+  } catch {}
+
+  return ''
 }
