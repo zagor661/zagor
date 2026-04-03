@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const SHEET_ID = process.env.SCHEDULE_SHEET_ID || '14PQAd_omauQWHuoMH07CiuTFMKr4a5mduwdh_4F8pY4'
 
 export async function GET() {
@@ -7,9 +10,7 @@ export async function GET() {
     // Use Google Sheets CSV export — simpler, no JSONP parsing needed
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`
 
-    const res = await fetch(url, {
-      cache: 'no-store', // always fresh data
-    })
+    const res = await fetch(url)
 
     if (!res.ok) {
       console.error('Google Sheets fetch failed:', res.status)
