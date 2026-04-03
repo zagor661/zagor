@@ -4,32 +4,60 @@ import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
+import supabase from '@/lib/supabase'
 
 export default function Dashboard() {
   const { user, loading, logout } = useUser()
   const [showReminder, setShowReminder] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check reminders
-    const now = new Date()
-    const hour = now.getHours()
-    const minute = now.getMinutes()
-    const day = now.getDay() // 0 = Sunday
+    if (!user) return
 
-    // Temperature reminders: 11:30-13:00 and 19:30-21:00
-    if ((hour === 11 && minute >= 30) || hour === 12 || (hour === 13 && minute === 0)) {
-      setShowReminder('🌡️ Pora na pomiary temperatur — zmiana PORANNA!')
-    } else if ((hour === 19 && minute >= 30) || hour === 20 || (hour === 21 && minute === 0)) {
-      setShowReminder('🌡️ Pora na pomiary temperatur — zmiana WIECZORNA!')
+    async function checkReminders() {
+      const now = new Date()
+      const hour = now.getHours()
+      const minute = now.getMinutes()
+      const day = now.getDay() // 0 = Sunday
+      const today = format(now, 'yyyy-MM-dd')
+
+      const reminders: string[] = []
+
+      // Check if temperature logs already exist for today
+      const { data: todayLogs } = await supabase
+        .from('temperature_logs')
+        .select('id, shift')
+        .eq('date', today)
+        .eq('location_id', user!.location_id)
+
+      const hasMorning = todayLogs?.some(l => l.shift === 'morning')
+      const hasEvening = todayLogs?.some(l => l.shift === 'evening')
+
+      // Temperature reminders: only show if NOT yet filled
+      if (!hasMorning && ((hour === 11 && minute >= 30) || hour === 12 || (hour === 13 && minute === 0))) {
+        reminders.push('🌡️ Pora na pomiary temperatur — zmiana PORANNA!')
+      } else if (!hasEvening && ((hour === 19 && minute >= 30) || hour === 20 || (hour === 21 && minute === 0))) {
+        reminders.push('🌡️ Pora na pomiary temperatur — zmiana WIECZORNA!')
+      }
+
+      // Sunday cleaning reminder — check if cleaning log exists
+      if (day === 0) {
+        const weekNum = getWeekNumber(now)
+        const { data: cleaningLogs } = await supabase
+          .from('cleaning_logs')
+          .select('id')
+          .eq('week_number', weekNum)
+          .eq('location_id', user!.location_id)
+          .limit(1)
+
+        if (!cleaningLogs || cleaningLogs.length === 0) {
+          reminders.push('🧹 Niedziela — czas na tygodniowe sprzątanie!')
+        }
+      }
+
+      setShowReminder(reminders.length > 0 ? reminders.join('\n') : null)
     }
 
-    // Sunday cleaning reminder
-    if (day === 0) {
-      setShowReminder(prev => prev
-        ? prev + '\n🧹 Niedziela — czas na tygodniowe sprzątanie!'
-        : '🧹 Niedziela — czas na tygodniowe sprzątanie!'
-      )
-    }
+    checkReminders()
 
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -38,21 +66,19 @@ export default function Dashboard() {
 
     // Set up notification interval (check every 30 min)
     const interval = setInterval(() => {
-      const h = new Date().getHours()
-      if (h === 12 || h === 20) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('KitchenOps 🌡️', { body: 'Pora na pomiary temperatur!' })
-        }
-      }
-      if (new Date().getDay() === 0 && h === 10) {
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('KitchenOps 🧹', { body: 'Niedziela — tygodniowe sprzątanie!' })
-        }
-      }
+      checkReminders()
     }, 30 * 60 * 1000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [user])
+
+  function getWeekNumber(d: Date) {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+    const dayNum = date.getUTCDay() || 7
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum)
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+    return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  }
 
   if (loading || !user) return null
 
