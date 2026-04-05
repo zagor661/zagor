@@ -306,14 +306,31 @@ export default function TemperaturePage() {
                       {unit.temp_min}° – {unit.temp_max}°C
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {unit.temp_min < 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = val || '0'
+                          const num = parseFloat(current)
+                          setMorningTemps(p => ({ ...p, [unit.id]: isNaN(num) ? current : String(-num) }))
+                        }}
+                        className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-bold text-lg flex-shrink-0"
+                      >
+                        ±
+                      </button>
+                    )}
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       inputMode="decimal"
                       placeholder="—"
                       value={val}
-                      onChange={e => setMorningTemps(p => ({ ...p, [unit.id]: e.target.value }))}
+                      onChange={e => {
+                        const v = e.target.value.replace(',', '.')
+                        if (v === '' || v === '-' || /^-?\d*\.?\d*$/.test(v)) {
+                          setMorningTemps(p => ({ ...p, [unit.id]: v }))
+                        }
+                      }}
                       className={`w-24 text-center text-2xl font-bold py-2.5 rounded-xl border-2 focus:outline-none focus:ring-2 ${
                         bad
                           ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-200'
@@ -392,14 +409,31 @@ export default function TemperaturePage() {
                       {unit.temp_min}° – {unit.temp_max}°C
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {unit.temp_min < 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = val || '0'
+                          const num = parseFloat(current)
+                          setEveningTemps(p => ({ ...p, [unit.id]: isNaN(num) ? current : String(-num) }))
+                        }}
+                        className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-bold text-lg flex-shrink-0"
+                      >
+                        ±
+                      </button>
+                    )}
                     <input
-                      type="number"
-                      step="0.1"
+                      type="text"
                       inputMode="decimal"
                       placeholder="—"
                       value={val}
-                      onChange={e => setEveningTemps(p => ({ ...p, [unit.id]: e.target.value }))}
+                      onChange={e => {
+                        const v = e.target.value.replace(',', '.')
+                        if (v === '' || v === '-' || /^-?\d*\.?\d*$/.test(v)) {
+                          setEveningTemps(p => ({ ...p, [unit.id]: v }))
+                        }
+                      }}
                       className={`w-24 text-center text-2xl font-bold py-2.5 rounded-xl border-2 focus:outline-none focus:ring-2 ${
                         bad
                           ? 'border-red-400 text-red-700 bg-red-50 focus:ring-red-200'
