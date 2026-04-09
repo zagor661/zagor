@@ -275,15 +275,6 @@ export default function BreakdownsPage() {
         {/* LIST VIEW */}
         {view === 'list' && (
           <>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="py-2 px-3 rounded-xl text-center text-sm font-bold bg-yellow-50 text-yellow-700 border-2 border-yellow-200">
-                🛠️ Otwarte: {openCount}
-              </div>
-              <div className="py-2 px-3 rounded-xl text-center text-sm font-bold bg-gray-100 text-gray-600">
-                📚 Wszystkie: {breakdowns.length}
-              </div>
-            </div>
-
             {breakdowns.length === 0 && (
               <div className="card text-center py-10">
                 <div className="text-5xl mb-2">✅</div>
