@@ -9,9 +9,10 @@ import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/rendere
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
 
-// ─── FONT — Roboto z @fontsource/roboto@4.5.8 (TTF w node_modules) ──
+// ─── FONT — Roboto z public/fonts/ (skopiowane z @fontsource przez prebuild) ──
 // Wariant latin-ext obsługuje pełne polskie znaki (ą, ć, ę, ł, ń, ó, ś, ź, ż)
-const fontBase = path.join(process.cwd(), 'node_modules/@fontsource/roboto/files')
+// Folder public/ jest zawsze w bundlu Vercel lambda — node_modules/ nie zawsze.
+const fontBase = path.join(process.cwd(), 'public', 'fonts')
 Font.register({
   family: 'Roboto',
   fonts: [
