@@ -117,8 +117,29 @@ export default function TemperaturePage() {
   const morningFilledCount = Object.values(morningTemps).filter(v => v !== '').length
   const eveningFilledCount = Object.values(eveningTemps).filter(v => v !== '').length
 
+  // HACCP: pomiary poza normą bez akcji korygującej blokują zapis
+  const missingMorningActions = units.filter(u => {
+    const v = morningTemps[u.id]
+    return v && isOutOfRange(u, v) && !(morningActions[u.id] && morningActions[u.id].trim())
+  })
+  const missingEveningActions = units.filter(u => {
+    const v = eveningTemps[u.id]
+    return v && isOutOfRange(u, v) && !(eveningActions[u.id] && eveningActions[u.id].trim())
+  })
+  const morningBlocked = missingMorningActions.length > 0
+  const eveningBlocked = missingEveningActions.length > 0
+
   const handleSave = async (shift: 'morning' | 'evening') => {
     if (!user) return
+    // HACCP guard — nie pozwól zapisać bez akcji korygującej
+    if (shift === 'morning' && morningBlocked) {
+      alert('HACCP: uzupełnij działanie korygujące dla pomiarów poza normą:\n• ' + missingMorningActions.map(u => u.name).join('\n• '))
+      return
+    }
+    if (shift === 'evening' && eveningBlocked) {
+      alert('HACCP: uzupełnij działanie korygujące dla pomiarów poza normą:\n• ' + missingEveningActions.map(u => u.name).join('\n• '))
+      return
+    }
     setSaving(shift)
 
     const temps = shift === 'morning' ? morningTemps : eveningTemps
@@ -353,10 +374,19 @@ export default function TemperaturePage() {
               )
             })}
 
+            {morningBlocked && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3 text-sm text-red-800">
+                <b>⚠️ HACCP — wymagana akcja korygująca</b>
+                <div className="mt-1">Pomiar poza normą musi mieć opisane działanie korygujące:</div>
+                <ul className="mt-1 list-disc list-inside">
+                  {missingMorningActions.map(u => <li key={u.id}>{u.name}</li>)}
+                </ul>
+              </div>
+            )}
             <button
               onClick={() => handleSave('morning')}
-              disabled={saving !== null || morningFilledCount === 0}
-              className="btn-orange"
+              disabled={saving !== null || morningFilledCount === 0 || morningBlocked}
+              className="btn-orange disabled:opacity-50"
             >
               {saving === 'morning' ? 'Zapisuję...' : `☀️ Zapisz poranne (${morningFilledCount}/${units.length})`}
             </button>
@@ -456,10 +486,19 @@ export default function TemperaturePage() {
               )
             })}
 
+            {eveningBlocked && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl px-4 py-3 text-sm text-red-800">
+                <b>⚠️ HACCP — wymagana akcja korygująca</b>
+                <div className="mt-1">Pomiar poza normą musi mieć opisane działanie korygujące:</div>
+                <ul className="mt-1 list-disc list-inside">
+                  {missingEveningActions.map(u => <li key={u.id}>{u.name}</li>)}
+                </ul>
+              </div>
+            )}
             <button
               onClick={() => handleSave('evening')}
-              disabled={saving !== null || eveningFilledCount === 0}
-              className="btn-orange"
+              disabled={saving !== null || eveningFilledCount === 0 || eveningBlocked}
+              className="btn-orange disabled:opacity-50"
             >
               {saving === 'evening' ? 'Zapisuję i wysyłam raport...' : `🌙 Zapisz wieczorne i wyślij raport (${eveningFilledCount}/${units.length})`}
             </button>

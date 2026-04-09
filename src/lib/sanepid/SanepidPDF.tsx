@@ -8,12 +8,21 @@ import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/rendere
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
 
+// ─── FONT — Roboto z Google Fonts (obsługuje polskie znaki) ──
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.ttf', fontWeight: 'normal' },
+    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmEU9fBBc-.ttf', fontWeight: 'bold' },
+  ],
+})
+
 // ─── STYLES ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
   page: {
     padding: 40,
     fontSize: 9,
-    fontFamily: 'Helvetica',
+    fontFamily: 'Roboto',
     color: '#1f2937',
   },
   header: {
@@ -194,19 +203,30 @@ export const SanepidPDF: React.FC<Props> = ({ data, compliance, reportId, genera
               <Text style={[styles.thText, { flex: 1 }]}>Zmiana</Text>
               <Text style={[styles.thText, { flex: 2.3 }]}>Urządzenie</Text>
               <Text style={[styles.thText, { flex: 0.9 }]}>Temp.</Text>
-              <Text style={[styles.thText, { flex: 0.8 }]}>Norma</Text>
-              <Text style={[styles.thText, { flex: 2.7 }]}>Akcja korygująca</Text>
+              <Text style={[styles.thText, { flex: 1.1 }]}>Norma</Text>
+              <Text style={[styles.thText, { flex: 2.4 }]}>Akcja korygująca</Text>
             </View>
-            {readingsByLog.map((r, i) => (
-              <View key={i} style={[styles.tr, r.is_out_of_range ? styles.rowOutOfRange : {}]}>
-                <Text style={[styles.td, { flex: 1.3 }]}>{fmtDate(r.log_date)}</Text>
-                <Text style={[styles.td, { flex: 1 }]}>{r.shift_type || '-'}</Text>
-                <Text style={[styles.td, { flex: 2.3 }]}>{r.unit_name}</Text>
-                <Text style={[styles.td, { flex: 0.9 }]}>{r.temperature.toFixed(1)}°C</Text>
-                <Text style={[styles.td, { flex: 0.8 }]}>{r.temp_min ?? '-'}/{r.temp_max ?? '-'}</Text>
-                <Text style={[styles.td, { flex: 2.7 }]}>{r.is_out_of_range ? (r.corrective_action || '⚠ BRAK') : 'OK'}</Text>
-              </View>
-            ))}
+            {readingsByLog.map((r, i) => {
+              const norma = (r.temp_min != null && r.temp_max != null)
+                ? `${r.temp_min}—${r.temp_max}°C`
+                : '-'
+              const shift = r.shift_type === 'morning' ? 'Poranna'
+                          : r.shift_type === 'evening' ? 'Wieczorna'
+                          : (r.shift_type || '-')
+              const akcja = r.is_out_of_range
+                ? (r.corrective_action && r.corrective_action.trim() ? r.corrective_action : 'BRAK AKCJI')
+                : 'OK'
+              return (
+                <View key={i} style={[styles.tr, r.is_out_of_range ? styles.rowOutOfRange : {}]}>
+                  <Text style={[styles.td, { flex: 1.3 }]}>{fmtDate(r.log_date)}</Text>
+                  <Text style={[styles.td, { flex: 1 }]}>{shift}</Text>
+                  <Text style={[styles.td, { flex: 2.3 }]}>{r.unit_name}</Text>
+                  <Text style={[styles.td, { flex: 0.9 }]}>{r.temperature.toFixed(1)}°C</Text>
+                  <Text style={[styles.td, { flex: 1.1 }]}>{norma}</Text>
+                  <Text style={[styles.td, { flex: 2.4 }]}>{akcja}</Text>
+                </View>
+              )
+            })}
           </View>
         )}
         {data.tempReadings.length > 80 && (
@@ -229,11 +249,11 @@ export const SanepidPDF: React.FC<Props> = ({ data, compliance, reportId, genera
               <Text style={[styles.thText, { flex: 1.5 }]}>Wykonano</Text>
             </View>
             {cleaningByBlock.map((e, i) => (
-              <View key={i} style={styles.tr}>
+              <View key={i} style={[styles.tr, !e.is_completed ? styles.rowOutOfRange : {}]}>
                 <Text style={[styles.td, { flex: 1.3 }]}>{fmtDate(e.log_date)}</Text>
                 <Text style={[styles.td, { flex: 4.5 }]}>{e.task_name}</Text>
                 <Text style={[styles.td, { flex: 1.5 }]}>{e.task_category || '-'}</Text>
-                <Text style={[styles.td, { flex: 1 }]}>{e.is_completed ? 'OK' : 'BRAK'}</Text>
+                <Text style={[styles.td, { flex: 1, fontWeight: 'bold' }]}>{e.is_completed ? 'OK' : 'BRAK'}</Text>
                 <Text style={[styles.td, { flex: 1.5 }]}>{e.completed_at ? fmtDateTime(e.completed_at) : '-'}</Text>
               </View>
             ))}

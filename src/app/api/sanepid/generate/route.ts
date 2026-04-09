@@ -32,10 +32,15 @@ export async function POST(req: NextRequest) {
     })
 
     const body = await req.json()
-    const { fromDate, toDate, userId, locationId } = body
+    const { fromDate, toDate, userId, locationId, email, inspectorNote } = body
 
     if (!fromDate || !toDate || !userId || !locationId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Walidacja email (jeśli podany)
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Nieprawidłowy adres email' }, { status: 400 })
     }
 
     // ─── 1. Pobierz dane LOKAL + USER ────────────────────────────────
@@ -227,6 +232,86 @@ export async function POST(req: NextRequest) {
       // PDF jest w Storage, nawet jak meta się nie zapisała
     }
 
+    // ─── 10. Opcjonalna wysyłka mailem (Tryb kontroli) ───────────
+    let emailStatus: { sent: boolean; error?: string } | null = null
+    if (email) {
+      const resendKey = process.env.RESEND_API_KEY
+      if (!resendKey) {
+        emailStatus = { sent: false, error: 'RESEND_API_KEY nie skonfigurowany na serwerze' }
+      } else {
+        try {
+          const statusEmoji = compliance.overall === 'ok' ? '🟢' : compliance.overall === 'warn' ? '🟡' : '🔴'
+          const statusLabel = compliance.overall === 'ok' ? 'ZGODNY' : compliance.overall === 'warn' ? 'Z UWAGAMI' : 'NIEZGODNY'
+          const subject = `Raport HACCP / Sanepid — ${location.name} — ${fromDate} – ${toDate}`
+          const html = `
+            <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 640px; color: #111;">
+              <h2 style="color: #0f766e; margin-bottom: 4px;">📄 Raport HACCP / Sanepid</h2>
+              <p style="color: #6b7280; margin-top: 0;">Dokumentacja bezpieczeństwa żywności</p>
+
+              <table style="width:100%; border-collapse:collapse; margin-top:16px;">
+                <tr><td style="padding:6px 0; color:#6b7280; width:140px;">Lokal</td><td style="padding:6px 0; font-weight:bold;">${location.name}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">Zakres</td><td style="padding:6px 0;">${fromDate} – ${toDate}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">Numer raportu</td><td style="padding:6px 0; font-family: monospace;">${reportId}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">Status zgodności</td><td style="padding:6px 0; font-weight:bold;">${statusEmoji} ${statusLabel}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">Wygenerował</td><td style="padding:6px 0;">${userProfile?.full_name || 'Administrator'}</td></tr>
+                <tr><td style="padding:6px 0; color:#6b7280;">Data wygenerowania</td><td style="padding:6px 0;">${new Date().toLocaleString('pl-PL')}</td></tr>
+              </table>
+
+              ${inspectorNote ? `
+                <div style="margin-top:20px; padding:12px 16px; background:#f9fafb; border-left:4px solid #0f766e; white-space:pre-wrap; font-size:14px;">
+                  ${String(inspectorNote).replace(/</g, '&lt;')}
+                </div>
+              ` : ''}
+
+              <p style="margin-top:24px; font-size:14px; color:#374151;">
+                Pełna dokumentacja HACCP za wskazany okres znajduje się w załączniku PDF.
+                Raport zawiera: monitoring temperatur urządzeń chłodniczych, ewidencję czystości, rejestr strat produktowych oraz działania korygujące.
+              </p>
+
+              <hr style="margin-top:24px; border:none; border-top:1px solid #e5e7eb;" />
+              <p style="color:#9ca3af; font-size:12px;">
+                Wiadomość wygenerowana automatycznie przez system Kitchen Ops (${location.name}).<br/>
+                W razie pytań prosimy o kontakt zwrotny na adres nadawcy.
+              </p>
+            </div>
+          `
+
+          const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
+
+          const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${resendKey}`,
+            },
+            body: JSON.stringify({
+              from: 'KitchenOps <onboarding@resend.dev>',
+              to: email,
+              cc: process.env.REPORT_EMAIL || undefined,
+              subject,
+              html,
+              attachments: [{
+                filename: fileName,
+                content: pdfBase64,
+              }],
+            }),
+          })
+
+          const result = await res.json().catch(() => ({}))
+          if (res.ok) {
+            emailStatus = { sent: true }
+            console.log('>>> Sanepid email sent to', email, 'id:', result?.id)
+          } else {
+            emailStatus = { sent: false, error: result?.message || `Resend error ${res.status}` }
+            console.error('Sanepid email error:', result)
+          }
+        } catch (e: any) {
+          emailStatus = { sent: false, error: e.message || 'Unknown email error' }
+          console.error('Sanepid email exception:', e)
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       reportId,
@@ -235,6 +320,7 @@ export async function POST(req: NextRequest) {
       storagePath,
       compliance,
       report: savedReport,
+      email: emailStatus,
     })
 
   } catch (err: any) {
