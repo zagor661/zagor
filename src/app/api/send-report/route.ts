@@ -277,6 +277,7 @@ export async function POST(req: NextRequest) {
             reason: data.reason || '',
             estimated_value: data.estimated_value ?? '',
             description: data.description || '',
+            fault_person_name: data.fault_person_name || '',
           }
           const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
           const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })

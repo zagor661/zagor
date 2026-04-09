@@ -17,8 +17,12 @@ interface Loss {
   reason: string | null
   estimated_value: number | null
   description: string | null
+  fault_person_id: string | null
+  fault_person_name: string | null
   created_at: string
 }
+
+interface Worker { id: string; full_name: string }
 
 const REASONS = ['Zepsute', 'Spalone', 'Upuszczone', 'Zwrot od klienta', 'Termin', 'Inne']
 const REASON_COLOR: Record<string, string> = {
@@ -42,6 +46,8 @@ export default function StratyPage() {
   const [unit, setUnit] = useState<'kg' | 'g' | 'szt'>('kg')
   const [reason, setReason] = useState('Zepsute')
   const [description, setDescription] = useState('')
+  const [faultPersonId, setFaultPersonId] = useState('')
+  const [workers, setWorkers] = useState<Worker[]>([])
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager'
 
@@ -70,7 +76,17 @@ export default function StratyPage() {
   useEffect(() => {
     if (authLoading || !user) return
     loadLosses()
+    loadWorkers()
   }, [user, authLoading])
+
+  async function loadWorkers() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('is_active', true)
+      .order('full_name')
+    if (data) setWorkers(data as Worker[])
+  }
 
   async function loadLosses() {
     const { data } = await supabase
@@ -97,6 +113,7 @@ export default function StratyPage() {
 
     setSaving(true)
 
+    const faultWorker = workers.find(w => w.id === faultPersonId)
     const payload = {
       location_id: user.location_id,
       reporter_id: user.id,
@@ -108,6 +125,8 @@ export default function StratyPage() {
       reason,
       estimated_value: estimatedValue,
       description: description.trim() || null,
+      fault_person_id: faultPersonId || null,
+      fault_person_name: faultWorker?.full_name || null,
     }
 
     const { error } = await supabase.from('worker_losses').insert(payload)
@@ -130,6 +149,7 @@ export default function StratyPage() {
           reason,
           estimated_value: estimatedValue,
           description: description.trim() || '',
+          fault_person_name: faultWorker?.full_name || '',
         },
       }),
     }).catch(() => {})
@@ -141,6 +161,7 @@ export default function StratyPage() {
     setUnit('kg')
     setReason('Zepsute')
     setDescription('')
+    setFaultPersonId('')
     setShowForm(false)
     setSaving(false)
     await loadLosses()
@@ -292,6 +313,23 @@ export default function StratyPage() {
               </div>
             </div>
 
+            {/* Fault person */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Winowajca (opcjonalnie) <span className="text-gray-400">— tylko jeśli ewidentnie czyjaś wina</span>
+              </label>
+              <select
+                value={faultPersonId}
+                onChange={e => setFaultPersonId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none bg-white"
+              >
+                <option value="">— nie przypisuj —</option>
+                {workers.map(w => (
+                  <option key={w.id} value={w.id}>{w.full_name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Description */}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Opis (opcjonalnie)</label>
@@ -340,6 +378,9 @@ export default function StratyPage() {
                       <div className="text-xs text-gray-500 mt-1">
                         {l.quantity} {l.unit} · {l.reporter_name} · {format(new Date(l.created_at), 'd MMM HH:mm', { locale: pl })}
                       </div>
+                      {l.fault_person_name && (
+                        <div className="text-xs text-red-700 font-medium mt-1">⚠️ Wina: {l.fault_person_name}</div>
+                      )}
                       {l.description && <p className="text-xs text-gray-600 mt-1 italic">{l.description}</p>}
                     </div>
                     <div className="text-right">
