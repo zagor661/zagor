@@ -4,20 +4,35 @@
 // ============================================================
 
 import React from 'react'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
 import { robotoRegular, robotoBold } from './fonts-embedded'
 
-// ─── FONT — Roboto wbudowane jako base64 data URI ──
-// public/ NIE jest pakowane do lambdy Vercel, więc fs.readFileSync nie działa.
-// Rozwiązanie: scripts/copy-fonts.js generuje fonts-embedded.ts z base64.
-// Next.js bundluje TS jako kod → font jedzie razem z lambdą, zero fs.
+// ─── FONT — Roboto via /tmp ──
+// @react-pdf/renderer w trybie server traktuje `src` jako ścieżkę pliku.
+// Na Vercel lambda public/ nie istnieje, ale /tmp jest writable.
+// Rozwiązanie: base64 z fonts-embedded.ts → zapisujemy do /tmp raz → Font.register z tej ścieżki.
+const tmpDir = path.join(os.tmpdir(), 'kitchen-ops-fonts')
+const regularPath = path.join(tmpDir, 'Roboto-Regular.ttf')
+const boldPath = path.join(tmpDir, 'Roboto-Bold.ttf')
+
+try {
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
+  if (!fs.existsSync(regularPath)) fs.writeFileSync(regularPath, robotoRegular)
+  if (!fs.existsSync(boldPath)) fs.writeFileSync(boldPath, robotoBold)
+} catch (err) {
+  console.error('[SanepidPDF] Font write to /tmp failed:', err)
+}
+
 Font.register({
   family: 'Roboto',
   fonts: [
-    { src: robotoRegular, fontWeight: 'normal' },
-    { src: robotoBold, fontWeight: 'bold' },
+    { src: regularPath, fontWeight: 'normal' },
+    { src: boldPath, fontWeight: 'bold' },
   ],
 })
 
