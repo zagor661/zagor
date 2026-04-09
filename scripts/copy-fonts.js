@@ -1,149 +1,62 @@
-// Pobiera/kopiuje fonty Roboto (Regular + Bold, subset latin-ext dla polskich znaków)
-// do public/fonts/ — używane przez SanepidPDF do renderowania raportu HACCP.
+// Wbudowuje fonty Roboto (Regular + Bold) bezpośrednio w moduł TypeScript
+// jako base64 data URI. To najpewniejsze rozwiązanie:
+// - public/ NIE jest pakowane przez Next.js do lambdy serverless na Vercel
+// - node_modules jest tracowane, ale @fontsource nie shipuje TTF w v5
+// - fs.readFileSync przy runtime nie znajduje plików na lambdzie
 //
-// Strategia (próbuje kolejno):
-//   1) Jeśli public/fonts/Roboto-*.ttf już istnieje → skip
-//   2) Kopia z node_modules/@fontsource/roboto/files/ (jeśli pakiet ma TTF)
-//   3) Download z Google Fonts CSS API używając starego User-Agenta (IE6),
-//      który wymusza serwowanie TTF zamiast woff2.
-//
-// Skrypt musi być self-contained (brak deps npm) i uruchamia się na Vercel build.
+// Rozwiązanie: czytamy TTF raz przy build, kodujemy base64, generujemy
+// src/lib/sanepid/fonts-embedded.ts który eksportuje data URI.
+// Next.js bundluje TS jak każdy inny moduł → font jedzie razem z JS.
 
 const fs = require('fs')
 const path = require('path')
-const https = require('https')
 
 const ROOT = path.join(__dirname, '..')
-const OUT_DIR = path.join(ROOT, 'public', 'fonts')
-const REQUIRED = [
-  { weight: 400, style: 'normal', file: 'Roboto-Regular.ttf' },
-  { weight: 700, style: 'normal', file: 'Roboto-Bold.ttf' },
+const SRC_DIR = path.join(ROOT, 'public', 'fonts')
+const OUT_FILE = path.join(ROOT, 'src', 'lib', 'sanepid', 'fonts-embedded.ts')
+
+const SOURCES = [
+  { file: 'Roboto-Regular.ttf', name: 'robotoRegular' },
+  { file: 'Roboto-Bold.ttf',    name: 'robotoBold'    },
 ]
-const IE6_UA = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)'
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-}
+function main() {
+  // Weryfikuj obecność plików źródłowych
+  const missing = SOURCES.filter(s => !fs.existsSync(path.join(SRC_DIR, s.file)))
+  if (missing.length > 0) {
+    console.error(`[fonts] BRAK plików TTF w public/fonts/: ${missing.map(m => m.file).join(', ')}`)
+    console.error(`[fonts] Pobierz Roboto z https://fonts.google.com/specimen/Roboto i wrzuć Roboto-Regular.ttf + Roboto-Bold.ttf do public/fonts/`)
 
-function httpGet(url, headers = {}, maxRedirect = 5) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, res => {
-      const { statusCode, headers: h } = res
-      if (statusCode >= 300 && statusCode < 400 && h.location && maxRedirect > 0) {
-        res.resume()
-        const nextUrl = h.location.startsWith('http')
-          ? h.location
-          : new URL(h.location, url).toString()
-        return httpGet(nextUrl, headers, maxRedirect - 1).then(resolve, reject)
-      }
-      if (statusCode !== 200) {
-        res.resume()
-        return reject(new Error(`HTTP ${statusCode} for ${url}`))
-      }
-      const chunks = []
-      res.on('data', c => chunks.push(c))
-      res.on('end', () => resolve(Buffer.concat(chunks)))
-      res.on('error', reject)
-    })
-    req.on('error', reject)
-    req.setTimeout(15000, () => req.destroy(new Error('Timeout')))
-  })
-}
-
-function allPresent() {
-  return REQUIRED.every(f => {
-    const p = path.join(OUT_DIR, f.file)
-    return fs.existsSync(p) && fs.statSync(p).size > 10000 // TTF > 10KB
-  })
-}
-
-function tryLocalCopy() {
-  const base = path.join(ROOT, 'node_modules', '@fontsource', 'roboto', 'files')
-  if (!fs.existsSync(base)) return false
-  const map = {
-    '400-normal': 'roboto-latin-ext-400-normal.ttf',
-    '700-normal': 'roboto-latin-ext-700-normal.ttf',
-  }
-  let copied = 0
-  for (const f of REQUIRED) {
-    const src = path.join(base, map[`${f.weight}-${f.style}`])
-    if (!fs.existsSync(src)) continue
-    fs.copyFileSync(src, path.join(OUT_DIR, f.file))
-    console.log(`[fonts] ✓ kopia z node_modules: ${f.file}`)
-    copied++
-  }
-  return copied === REQUIRED.length
-}
-
-async function tryGoogleFontsDownload() {
-  console.log('[fonts] Pobieram z Google Fonts CSS API (IE6 UA → TTF)...')
-  const cssUrl =
-    'https://fonts.googleapis.com/css?family=Roboto:400,700&subset=latin-ext'
-  const cssBuf = await httpGet(cssUrl, { 'User-Agent': IE6_UA })
-  const css = cssBuf.toString('utf8')
-
-  // Parsuj @font-face bloki
-  const blocks = css.split('@font-face').slice(1)
-  const ttfByWeight = {}
-  for (const block of blocks) {
-    const wMatch = block.match(/font-weight:\s*(\d+)/)
-    const urlMatch = block.match(/url\((https?:[^)]+\.ttf)\)/)
-    if (wMatch && urlMatch) {
-      ttfByWeight[wMatch[1]] = urlMatch[1]
-    }
-  }
-
-  if (!Object.keys(ttfByWeight).length) {
-    throw new Error(
-      'Nie znaleziono URL-i TTF w odpowiedzi Google Fonts. Pierwsze 300 znaków:\n' +
-        css.slice(0, 300)
-    )
-  }
-
-  for (const f of REQUIRED) {
-    const url = ttfByWeight[String(f.weight)]
-    if (!url) {
-      throw new Error(`Brak URL-a TTF dla wagi ${f.weight}`)
-    }
-    const buf = await httpGet(url, { 'User-Agent': IE6_UA })
-    fs.writeFileSync(path.join(OUT_DIR, f.file), buf)
-    console.log(`[fonts] ✓ pobrano ${f.file} (${(buf.length / 1024).toFixed(1)} KB)`)
-  }
-}
-
-async function main() {
-  ensureDir(OUT_DIR)
-
-  if (allPresent()) {
-    console.log('[fonts] Wszystkie fonty już są w public/fonts/ — skip.')
+    // Wygeneruj pusty stub żeby TS się kompilował
+    const stub = `// GENERATED STUB — fonty nie znalezione w public/fonts/\nexport const robotoRegular = ''\nexport const robotoBold = ''\n`
+    fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true })
+    fs.writeFileSync(OUT_FILE, stub)
     return
   }
 
-  // Etap 1: kopia z node_modules (jeśli @fontsource ma TTF)
-  if (tryLocalCopy() && allPresent()) {
-    console.log('[fonts] Gotowe (źródło: node_modules).')
-    return
+  let content = `// AUTO-GENERATED by scripts/copy-fonts.js — do not edit manually.
+// Fonty Roboto (latin-ext, obsługa polskich znaków) wbudowane jako base64
+// żeby @react-pdf mógł je zarejestrować w serverless lambda na Vercel
+// bez odczytu z dysku (public/ nie jest pakowane do lambdy).
+
+`
+
+  for (const s of SOURCES) {
+    const buf = fs.readFileSync(path.join(SRC_DIR, s.file))
+    const base64 = buf.toString('base64')
+    const dataUri = `data:font/ttf;base64,${base64}`
+    content += `export const ${s.name} = '${dataUri}'\n`
+    console.log(`[fonts] ✓ ${s.file} → ${(buf.length / 1024).toFixed(1)} KB → ${s.name}`)
   }
 
-  // Etap 2: download z Google Fonts
-  try {
-    await tryGoogleFontsDownload()
-    if (allPresent()) {
-      console.log('[fonts] Gotowe (źródło: Google Fonts).')
-      return
-    }
-  } catch (e) {
-    console.error('[fonts] Google Fonts download failed:', e.message)
-  }
-
-  console.error('[fonts] ❌ NIE UDAŁO SIĘ przygotować fontów.')
-  console.error('[fonts] Raport Sanepid PDF nie wyrenderuje polskich znaków!')
-  console.error('[fonts] Fallback: ręcznie wrzuć Roboto-Regular.ttf i Roboto-Bold.ttf')
-  console.error('[fonts] do public/fonts/ i zrób git commit.')
-  // Nie wywalamy buildu — route.ts sam zareaguje błędem.
+  fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true })
+  fs.writeFileSync(OUT_FILE, content)
+  console.log(`[fonts] Wygenerowano: ${path.relative(ROOT, OUT_FILE)}`)
 }
 
-main().catch(err => {
-  console.error('[fonts] Nieoczekiwany błąd:', err)
-  process.exitCode = 0 // nie wywalaj builda
-})
+try {
+  main()
+} catch (err) {
+  console.error('[fonts] Błąd:', err.message)
+  process.exit(1)
+}

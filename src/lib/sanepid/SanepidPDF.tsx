@@ -4,22 +4,20 @@
 // ============================================================
 
 import React from 'react'
-import path from 'path'
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
+import { robotoRegular, robotoBold } from './fonts-embedded'
 
-// ─── FONT — Roboto z public/fonts/ ──
-// Wariant latin-ext obsługuje pełne polskie znaki (ą, ć, ę, ł, ń, ó, ś, ź, ż).
-// Pliki TTF są przygotowane przez scripts/copy-fonts.js przed buildem.
-// Folder public/ jest zawsze w bundlu Vercel lambda (+ wymuszone przez
-// outputFileTracingIncludes w next.config.js).
-const fontBase = path.join(process.cwd(), 'public', 'fonts')
+// ─── FONT — Roboto wbudowane jako base64 data URI ──
+// public/ NIE jest pakowane do lambdy Vercel, więc fs.readFileSync nie działa.
+// Rozwiązanie: scripts/copy-fonts.js generuje fonts-embedded.ts z base64.
+// Next.js bundluje TS jako kod → font jedzie razem z lambdą, zero fs.
 Font.register({
   family: 'Roboto',
   fonts: [
-    { src: path.join(fontBase, 'Roboto-Regular.ttf'), fontWeight: 'normal' },
-    { src: path.join(fontBase, 'Roboto-Bold.ttf'), fontWeight: 'bold' },
+    { src: robotoRegular, fontWeight: 'normal' },
+    { src: robotoBold, fontWeight: 'bold' },
   ],
 })
 
