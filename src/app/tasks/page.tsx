@@ -113,6 +113,26 @@ export default function TasksPage() {
 
     if (error) { alert('Błąd: ' + error.message); setSaving(false); return }
 
+    // Log to Google Sheets (async, fire-and-forget)
+    const assignedName = workers.find(w => w.id === newAssign)?.full_name || ''
+    fetch('/api/send-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'task',
+        data: {
+          created_at: new Date().toISOString(),
+          location: user.location_name,
+          created_by: user.full_name,
+          assigned_to: assignedName,
+          title: newTitle.trim(),
+          description: newDesc.trim() || '',
+          due_date: newDate || '',
+          action: 'created',
+        },
+      }),
+    }).catch(() => {})
+
     setNewTitle('')
     setNewDesc('')
     setNewAssign('')
@@ -123,13 +143,35 @@ export default function TasksPage() {
   }
 
   async function toggleTask(task: WorkerTask) {
+    const willComplete = !task.is_completed
     await supabase
       .from('worker_tasks')
       .update({
-        is_completed: !task.is_completed,
-        completed_at: !task.is_completed ? new Date().toISOString() : null,
+        is_completed: willComplete,
+        completed_at: willComplete ? new Date().toISOString() : null,
       })
       .eq('id', task.id)
+
+    if (willComplete && user) {
+      fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'task',
+          data: {
+            created_at: new Date().toISOString(),
+            location: user.location_name,
+            created_by: task.created_by_name || '',
+            assigned_to: user.full_name,
+            title: task.title,
+            description: task.description || '',
+            due_date: task.due_date || '',
+            action: 'completed',
+          },
+        }),
+      }).catch(() => {})
+    }
+
     loadTasks()
   }
 

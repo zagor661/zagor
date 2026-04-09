@@ -121,6 +121,22 @@ export default function StarsPage() {
     if (error) {
       alert('Błąd: ' + error.message)
     } else {
+      const givenToName = workers.find(w => w.id === selectedWorker)?.full_name || ''
+      fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'star',
+          data: {
+            created_at: new Date().toISOString(),
+            location: user.location_name,
+            given_by: user.full_name,
+            given_to: givenToName,
+            reason: reason.trim() || '',
+          },
+        }),
+      }).catch(() => {})
+
       setSelectedWorker('')
       setReason('')
       setShowGive(false)

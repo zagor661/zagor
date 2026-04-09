@@ -115,6 +115,20 @@ export default function MealsPage() {
     if (error) {
       alert('Błąd: ' + error.message)
     } else {
+      fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'meal',
+          data: {
+            created_at: new Date().toISOString(),
+            location: user.location_name,
+            worker: user.full_name,
+            meal_date: today,
+          },
+        }),
+      }).catch(() => {})
+
       await loadTodayMeals()
       if (isAdmin) loadMonthStats()
     }

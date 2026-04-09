@@ -118,38 +118,46 @@ export async function POST(req: NextRequest) {
       `
     }
 
-    const emailPayload: any = {
-      from: 'KitchenOps <onboarding@resend.dev>',
-      to,
-      subject,
-      html,
-    }
+    let result: any = null
+    // Skip email entirely for task/meal/star (too noisy — they go to Sheets only, weekly summary via Apps Script)
+    const skipEmail = type === 'task' || type === 'meal' || type === 'star'
 
-    if (type === 'breakdown' && data.photo_data) {
-      const m = String(data.photo_data).match(/^data:(image\/\w+);base64,(.+)$/)
-      if (m) {
-        const ext = m[1].split('/')[1] || 'jpg'
-        emailPayload.attachments = [{
-          filename: `awaria-${Date.now()}.${ext}`,
-          content: m[2],
-        }]
+    if (!skipEmail && html) {
+      const emailPayload: any = {
+        from: 'KitchenOps <onboarding@resend.dev>',
+        to,
+        subject,
+        html,
       }
-    }
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(emailPayload),
-    })
+      if (type === 'breakdown' && data.photo_data) {
+        const m = String(data.photo_data).match(/^data:(image\/\w+);base64,(.+)$/)
+        if (m) {
+          const ext = m[1].split('/')[1] || 'jpg'
+          emailPayload.attachments = [{
+            filename: `awaria-${Date.now()}.${ext}`,
+            content: m[2],
+          }]
+        }
+      }
 
-    const result = await res.json()
-    console.log('>>> Resend status:', res.status, 'result:', JSON.stringify(result))
-    emailOk = res.ok
-    if (!res.ok) {
-      console.error('Resend error:', result)
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(emailPayload),
+      })
+
+      result = await res.json()
+      console.log('>>> Resend status:', res.status, 'result:', JSON.stringify(result))
+      emailOk = res.ok
+      if (!res.ok) {
+        console.error('Resend error:', result)
+      }
+    } else {
+      emailOk = true // not applicable
     }
 
     // --- Google Sheets webhook ---
@@ -216,6 +224,44 @@ export async function POST(req: NextRequest) {
           console.log('>>> Sending BREAKDOWN to Google Sheets')
           const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
           console.log('>>> Breakdown sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
+        } else if (type === 'task') {
+          sheetsPayload.data = {
+            created_at: data.created_at,
+            location: data.location || '',
+            created_by: data.created_by || '',
+            assigned_to: data.assigned_to || '',
+            title: data.title || '',
+            description: data.description || '',
+            due_date: data.due_date || '',
+            action: data.action || 'created', // created | completed | deleted
+          }
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Task sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
+        } else if (type === 'meal') {
+          sheetsPayload.data = {
+            created_at: data.created_at,
+            location: data.location || '',
+            worker: data.worker || '',
+            meal_date: data.meal_date || '',
+          }
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Meal sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
+        } else if (type === 'star') {
+          sheetsPayload.data = {
+            created_at: data.created_at,
+            location: data.location || '',
+            given_by: data.given_by || '',
+            given_to: data.given_to || '',
+            reason: data.reason || '',
+          }
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Star sheets status:', sheetsRes.status)
           sheetsOk = sheetsRes.ok
         } else if (type === 'cleaning') {
           sheetsPayload.data.date = data.date
