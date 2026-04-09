@@ -162,22 +162,12 @@ export default function Dashboard() {
 
         {/* Main actions */}
         <div className="space-y-3">
-          <Link href="/temperature" className="block card border-2 border-blue-100 bg-blue-50 hover:shadow-md transition-shadow active:scale-98">
+          <Link href="/sanepid" className="block card border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-blue-50 hover:shadow-md transition-shadow active:scale-98">
             <div className="flex items-center gap-4">
-              <span className="text-4xl">🌡️</span>
+              <span className="text-4xl">🧾</span>
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Temperatury lodówek</h2>
-                <p className="text-sm text-gray-500">Pomiary 2x dziennie — 8 urządzeń</p>
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/cleaning" className="block card border-2 border-green-100 bg-green-50 hover:shadow-md transition-shadow active:scale-98">
-            <div className="flex items-center gap-4">
-              <span className="text-4xl">🧹</span>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Sprzątanie tygodniowe</h2>
-                <p className="text-sm text-gray-500">14 zadań czystości HACCP</p>
+                <h2 className="text-lg font-bold text-gray-900">Sanepid / HACCP</h2>
+                <p className="text-sm text-gray-500">Temperatury · Czystość · Straty · Raporty</p>
               </div>
             </div>
           </Link>
@@ -234,15 +224,6 @@ export default function Dashboard() {
             </div>
           </Link>
 
-          <Link href="/straty" className="block card border-2 border-red-100 bg-red-50 hover:shadow-md transition-shadow active:scale-98">
-            <div className="flex items-center gap-4">
-              <span className="text-4xl">📉</span>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Lista strat</h2>
-                <p className="text-sm text-gray-500">Zgłoś stratę produktową z wyceną</p>
-              </div>
-            </div>
-          </Link>
         </div>
 
         {/* Rank + Stars */}
