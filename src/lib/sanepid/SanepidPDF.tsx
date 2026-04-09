@@ -9,15 +9,17 @@ import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/rendere
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
 
-// ─── FONT — Roboto z public/fonts/ (skopiowane z @fontsource przez prebuild) ──
-// Wariant latin-ext obsługuje pełne polskie znaki (ą, ć, ę, ł, ń, ó, ś, ź, ż)
-// Folder public/ jest zawsze w bundlu Vercel lambda — node_modules/ nie zawsze.
+// ─── FONT — Roboto z public/fonts/ ──
+// Wariant latin-ext obsługuje pełne polskie znaki (ą, ć, ę, ł, ń, ó, ś, ź, ż).
+// Pliki TTF są przygotowane przez scripts/copy-fonts.js przed buildem.
+// Folder public/ jest zawsze w bundlu Vercel lambda (+ wymuszone przez
+// outputFileTracingIncludes w next.config.js).
 const fontBase = path.join(process.cwd(), 'public', 'fonts')
 Font.register({
   family: 'Roboto',
   fonts: [
-    { src: path.join(fontBase, 'roboto-latin-ext-400-normal.ttf'), fontWeight: 'normal' },
-    { src: path.join(fontBase, 'roboto-latin-ext-700-normal.ttf'), fontWeight: 'bold' },
+    { src: path.join(fontBase, 'Roboto-Regular.ttf'), fontWeight: 'normal' },
+    { src: path.join(fontBase, 'Roboto-Bold.ttf'), fontWeight: 'bold' },
   ],
 })
 
