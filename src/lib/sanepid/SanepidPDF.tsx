@@ -230,7 +230,7 @@ export const SanepidPDF: React.FC<Props> = ({ data, compliance, reportId, genera
           </View>
         )}
         {data.tempReadings.length > 80 && (
-          <Text style={[styles.p, { fontStyle: 'italic', color: '#64748b' }]}>
+          <Text style={[styles.p, { color: '#64748b' }]}>
             ...pokazano 80 z {data.tempReadings.length} pomiarów. Pełne dane w systemie Kitchen Ops.
           </Text>
         )}
@@ -260,7 +260,7 @@ export const SanepidPDF: React.FC<Props> = ({ data, compliance, reportId, genera
           </View>
         )}
         {data.cleaningEntries.length > 100 && (
-          <Text style={[styles.p, { fontStyle: 'italic', color: '#64748b' }]}>
+          <Text style={[styles.p, { color: '#64748b' }]}>
             ...pokazano 100 z {data.cleaningEntries.length} wpisów.
           </Text>
         )}
