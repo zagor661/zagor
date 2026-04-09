@@ -4,16 +4,19 @@
 // ============================================================
 
 import React from 'react'
+import path from 'path'
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
 import type { SanepidData, ComplianceSummary } from './compliance'
 import { statusLabel } from './compliance'
 
-// ─── FONT — Roboto z Google Fonts (obsługuje polskie znaki) ──
+// ─── FONT — Roboto z @fontsource/roboto@4.5.8 (TTF w node_modules) ──
+// Wariant latin-ext obsługuje pełne polskie znaki (ą, ć, ę, ł, ń, ó, ś, ź, ż)
+const fontBase = path.join(process.cwd(), 'node_modules/@fontsource/roboto/files')
 Font.register({
   family: 'Roboto',
   fonts: [
-    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxKKTU1Kg.ttf', fontWeight: 'normal' },
-    { src: 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmEU9fBBc-.ttf', fontWeight: 'bold' },
+    { src: path.join(fontBase, 'roboto-latin-ext-400-normal.ttf'), fontWeight: 'normal' },
+    { src: path.join(fontBase, 'roboto-latin-ext-700-normal.ttf'), fontWeight: 'bold' },
   ],
 })
 
