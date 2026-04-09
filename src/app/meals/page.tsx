@@ -24,6 +24,9 @@ export default function MealsPage() {
   const [todayCount, setTodayCount] = useState(0)
   const [todayMeals, setTodayMeals] = useState<Meal[]>([])
   const [adding, setAdding] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [menuNumber, setMenuNumber] = useState('')
+  const [menuDesc, setMenuDesc] = useState('')
   const [monthStats, setMonthStats] = useState<MealStat[]>([])
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [allMeals, setAllMeals] = useState<any[]>([])
@@ -104,12 +107,15 @@ export default function MealsPage() {
 
   async function addMeal() {
     if (!user) return
+    if (!menuNumber.trim()) { alert('Podaj numer dania z menu'); return }
     setAdding(true)
 
     const { error } = await supabase.from('worker_meals').insert({
       profile_id: user.id,
       location_id: user.location_id,
       meal_date: today,
+      menu_number: menuNumber.trim(),
+      menu_description: menuDesc.trim() || null,
     })
 
     if (error) {
@@ -125,10 +131,15 @@ export default function MealsPage() {
             location: user.location_name,
             worker: user.full_name,
             meal_date: today,
+            menu_number: menuNumber.trim(),
+            menu_description: menuDesc.trim() || '',
           },
         }),
       }).catch(() => {})
 
+      setMenuNumber('')
+      setMenuDesc('')
+      setShowForm(false)
       await loadTodayMeals()
       if (isAdmin) loadMonthStats()
     }
@@ -181,13 +192,55 @@ export default function MealsPage() {
               </button>
             )}
             <button
-              onClick={addMeal}
+              onClick={() => setShowForm(true)}
               disabled={adding}
               className="w-20 h-20 rounded-3xl bg-brand-500 text-white text-4xl font-bold hover:bg-brand-600 active:scale-95 transition-transform shadow-lg disabled:opacity-50"
             >
               {adding ? '...' : '+'}
             </button>
           </div>
+
+          {showForm && (
+            <div className="mt-6 space-y-3 text-left">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Numer dania z menu *</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={menuNumber}
+                  onChange={e => setMenuNumber(e.target.value)}
+                  placeholder="np. 12"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none text-lg"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Opis (opcjonalnie)</label>
+                <input
+                  type="text"
+                  value={menuDesc}
+                  onChange={e => setMenuDesc(e.target.value)}
+                  placeholder="np. Kurczak teriyaki z ryżem"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => { setShowForm(false); setMenuNumber(''); setMenuDesc('') }}
+                  className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-medium"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={addMeal}
+                  disabled={adding || !menuNumber.trim()}
+                  className="flex-1 py-3 rounded-xl bg-brand-500 text-white font-bold disabled:opacity-50"
+                >
+                  {adding ? 'Zapisuję...' : 'Zapisz posiłek'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {todayMeals.length > 0 && (
             <div className="mt-4 space-y-1">

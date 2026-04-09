@@ -233,6 +233,16 @@ export default function Dashboard() {
               </div>
             </div>
           </Link>
+
+          <Link href="/straty" className="block card border-2 border-red-100 bg-red-50 hover:shadow-md transition-shadow active:scale-98">
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">📉</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Lista strat</h2>
+                <p className="text-sm text-gray-500">Zgłoś stratę produktową z wyceną</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Rank + Stars */}

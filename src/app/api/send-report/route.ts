@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
     let result: any = null
     // Skip email entirely for task/meal/star (too noisy — they go to Sheets only, weekly summary via Apps Script)
-    const skipEmail = type === 'task' || type === 'meal' || type === 'star'
+    const skipEmail = type === 'task' || type === 'meal' || type === 'star' || type === 'loss'
 
     if (!skipEmail && html) {
       const emailPayload: any = {
@@ -246,6 +246,8 @@ export async function POST(req: NextRequest) {
             location: data.location || '',
             worker: data.worker || '',
             meal_date: data.meal_date || '',
+            menu_number: data.menu_number || '',
+            menu_description: data.menu_description || '',
           }
           const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
           const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
@@ -262,6 +264,23 @@ export async function POST(req: NextRequest) {
           const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
           const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
           console.log('>>> Star sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
+        } else if (type === 'loss') {
+          sheetsPayload.data = {
+            created_at: data.created_at,
+            location: data.location || '',
+            reporter: data.reporter || '',
+            product_name: data.product_name || '',
+            product_category: data.product_category || '',
+            quantity: data.quantity ?? '',
+            unit: data.unit || '',
+            reason: data.reason || '',
+            estimated_value: data.estimated_value ?? '',
+            description: data.description || '',
+          }
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Loss sheets status:', sheetsRes.status)
           sheetsOk = sheetsRes.ok
         } else if (type === 'cleaning') {
           sheetsPayload.data.date = data.date
