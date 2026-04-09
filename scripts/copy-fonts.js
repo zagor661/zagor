@@ -44,8 +44,8 @@ function main() {
   for (const s of SOURCES) {
     const buf = fs.readFileSync(path.join(SRC_DIR, s.file))
     const base64 = buf.toString('base64')
-    content += `export const ${s.name} = Buffer.from('${base64}', 'base64')\n`
-    console.log(`[fonts] ✓ ${s.file} → ${(buf.length / 1024).toFixed(1)} KB → ${s.name}`)
+    content += `export const ${s.name} = '${base64}'\n`
+    console.log(`[fonts] ✓ ${s.file} → ${(buf.length / 1024).toFixed(1)} KB → ${s.name} (base64 string)`)
   }
 
   fs.mkdirSync(path.dirname(OUT_FILE), { recursive: true })

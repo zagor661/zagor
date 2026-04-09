@@ -22,8 +22,8 @@ const boldPath = path.join(tmpDir, 'Roboto-Bold.ttf')
 
 try {
   if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true })
-  if (!fs.existsSync(regularPath)) fs.writeFileSync(regularPath, robotoRegular)
-  if (!fs.existsSync(boldPath)) fs.writeFileSync(boldPath, robotoBold)
+  if (!fs.existsSync(regularPath)) fs.writeFileSync(regularPath, Buffer.from(robotoRegular, 'base64'))
+  if (!fs.existsSync(boldPath)) fs.writeFileSync(boldPath, Buffer.from(robotoBold, 'base64'))
 } catch (err) {
   console.error('[SanepidPDF] Font write to /tmp failed:', err)
 }
