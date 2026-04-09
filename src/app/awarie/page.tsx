@@ -191,6 +191,7 @@ export default function BreakdownsPage() {
               breakdown_type: type,
               priority,
               description: description.trim(),
+              photo_data: photo,
               created_at: new Date().toISOString(),
             },
           }),
