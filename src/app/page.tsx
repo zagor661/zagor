@@ -223,6 +223,16 @@ export default function Dashboard() {
               </div>
             </div>
           </Link>
+
+          <Link href="/awarie" className="block card border-2 border-orange-100 bg-orange-50 hover:shadow-md transition-shadow active:scale-98">
+            <div className="flex items-center gap-4">
+              <span className="text-4xl">🔧</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Awarie i usterki</h2>
+                <p className="text-sm text-gray-500">Zgłoś usterkę ze zdjęciem i opisem</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Rank + Stars */}

@@ -65,6 +65,32 @@ export async function POST(req: NextRequest) {
           </div>
         `
       }
+    } else if (type === 'breakdown') {
+      subject = `🔧 KitchenOps — Awaria [${data.priority}] — ${data.breakdown_type}`
+      const priorityColor: Record<string, string> = {
+        'Krytyczny': '#991b1b',
+        'Wysoki':    '#dc2626',
+        'Średni':    '#f59e0b',
+        'Niski':     '#16a34a',
+      }
+      const pc = priorityColor[data.priority] || '#374151'
+      const createdStr = new Date(data.created_at).toLocaleString('pl-PL')
+      html = `
+        <div style="font-family: system-ui, sans-serif; max-width: 600px;">
+          <h2 style="color: #ec7a11;">🔧 Nowe zgłoszenie awarii</h2>
+          <table style="width:100%; border-collapse:collapse;">
+            <tr><td style="padding:6px; color:#6b7280;">Lokal</td><td style="padding:6px; font-weight:bold;">${data.location || ''}</td></tr>
+            <tr><td style="padding:6px; color:#6b7280;">Zgłosił(a)</td><td style="padding:6px; font-weight:bold;">${data.reporter || ''}</td></tr>
+            <tr><td style="padding:6px; color:#6b7280;">Data</td><td style="padding:6px;">${createdStr}</td></tr>
+            <tr><td style="padding:6px; color:#6b7280;">Rodzaj</td><td style="padding:6px; font-weight:bold;">${data.breakdown_type}</td></tr>
+            <tr><td style="padding:6px; color:#6b7280;">Priorytet</td><td style="padding:6px;"><span style="background:${pc}; color:#fff; padding:3px 10px; border-radius:6px; font-weight:bold; font-size:12px;">${data.priority}</span></td></tr>
+          </table>
+          <h3 style="color:#374151; margin-top:20px;">Opis</h3>
+          <div style="background:#f9fafb; border-left:4px solid #ec7a11; padding:12px; white-space:pre-wrap; font-size:14px;">${(data.description || '').replace(/</g,'&lt;')}</div>
+          ${data.photo_data ? `<h3 style="color:#374151; margin-top:20px;">Zdjęcie usterki</h3><img src="${data.photo_data}" style="max-width:100%; border-radius:8px; border:1px solid #e5e7eb;" />` : ''}
+          <p style="color:#9ca3af; font-size:12px; margin-top:20px;">Wysłano automatycznie z KitchenOps</p>
+        </div>
+      `
     } else if (type === 'cleaning') {
       const doneCount = data.tasks.filter((t: any) => t.done).length
       subject = `🧹 KitchenOps — Czystość tyg. ${data.week} — ${doneCount}/${data.tasks.length} zadań — ${data.date}`
@@ -162,6 +188,22 @@ export async function POST(req: NextRequest) {
           }
 
           sheetsOk = true
+        } else if (type === 'breakdown') {
+          sheetsPayload.data = {
+            created_at: data.created_at,
+            location: data.location || '',
+            reporter: data.reporter || '',
+            breakdown_type: data.breakdown_type,
+            priority: data.priority,
+            description: data.description,
+            has_photo: !!data.photo_data,
+          }
+          const jsonBody = JSON.stringify(sheetsPayload)
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(jsonBody)
+          console.log('>>> Sending BREAKDOWN to Google Sheets')
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Breakdown sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
         } else if (type === 'cleaning') {
           sheetsPayload.data.date = data.date
           sheetsPayload.data.week = data.week
