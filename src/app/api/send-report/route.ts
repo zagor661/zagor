@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           </table>
           <h3 style="color:#374151; margin-top:20px;">Opis</h3>
           <div style="background:#f9fafb; border-left:4px solid #ec7a11; padding:12px; white-space:pre-wrap; font-size:14px;">${(data.description || '').replace(/</g,'&lt;')}</div>
-          ${data.photo_data ? `<h3 style="color:#374151; margin-top:20px;">Zdjęcie usterki</h3><img src="${data.photo_data}" style="max-width:100%; border-radius:8px; border:1px solid #e5e7eb;" />` : ''}
+          ${data.photo_data ? `<h3 style="color:#374151; margin-top:20px;">📷 Zdjęcie usterki — w załączniku</h3>` : ''}
           <p style="color:#9ca3af; font-size:12px; margin-top:20px;">Wysłano automatycznie z KitchenOps</p>
         </div>
       `
@@ -118,18 +118,31 @@ export async function POST(req: NextRequest) {
       `
     }
 
+    const emailPayload: any = {
+      from: 'KitchenOps <onboarding@resend.dev>',
+      to,
+      subject,
+      html,
+    }
+
+    if (type === 'breakdown' && data.photo_data) {
+      const m = String(data.photo_data).match(/^data:(image\/\w+);base64,(.+)$/)
+      if (m) {
+        const ext = m[1].split('/')[1] || 'jpg'
+        emailPayload.attachments = [{
+          filename: `awaria-${Date.now()}.${ext}`,
+          content: m[2],
+        }]
+      }
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        from: 'KitchenOps <onboarding@resend.dev>',
-        to,
-        subject,
-        html,
-      }),
+      body: JSON.stringify(emailPayload),
     })
 
     const result = await res.json()
