@@ -15,15 +15,22 @@ import { analyzeCompliance, type SanepidData } from '@/lib/sanepid/compliance'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Service-role client — potrzebny żeby zapisać do Storage + omija RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)!,
-  { auth: { persistSession: false } }
-)
-
 export async function POST(req: NextRequest) {
   try {
+    // Service-role client — tworzony lazy wewnątrz handlera, żeby build Next.js
+    // nie próbował go instancjonować podczas "Collecting page data"
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        { error: 'Server misconfigured: missing Supabase credentials' },
+        { status: 500 }
+      )
+    }
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false },
+    })
+
     const body = await req.json()
     const { fromDate, toDate, userId, locationId } = body
 
