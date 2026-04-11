@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { isAdminRole } from '@/lib/roles'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
@@ -53,7 +54,7 @@ export default function StarsPage() {
   const [reason, setReason] = useState('')
   const [sending, setSending] = useState(false)
 
-  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
+  const isAdmin = user ? isAdminRole(user.role) : false
 
   useEffect(() => {
     if (authLoading || !user) return

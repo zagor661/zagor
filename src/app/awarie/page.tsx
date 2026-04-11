@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { isAdminRole } from '@/lib/roles'
 
 interface Breakdown {
   id: string
@@ -110,7 +111,7 @@ export default function BreakdownsPage() {
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
+  const isAdmin = user ? isAdminRole(user.role) : false
 
   useEffect(() => {
     if (authLoading || !user) return

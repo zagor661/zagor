@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { isAdminRole } from '@/lib/roles'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, subMonths, addMonths } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
@@ -32,7 +33,7 @@ export default function MealsPage() {
   const [allMeals, setAllMeals] = useState<any[]>([])
   const [profiles, setProfiles] = useState<Record<string, string>>({})
 
-  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
+  const isAdmin = user ? isAdminRole(user.role) : false
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {

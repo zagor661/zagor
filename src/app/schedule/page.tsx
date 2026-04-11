@@ -101,7 +101,7 @@ export default function SchedulePage() {
 
         <div className="text-center">
           <h1 className="text-2xl font-bold">📅 Grafik zmianowy</h1>
-          <p className="text-gray-500 text-sm mt-1">Woki Woki — Imbir i Ryż</p>
+          <p className="text-gray-500 text-sm mt-1">{user?.location_name || 'Lokalizacja'}</p>
         </div>
 
         {/* Week navigation */}

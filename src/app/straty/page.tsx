@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { isAdminRole } from '@/lib/roles'
 import { FOODCOST_PRODUCTS, FoodcostProduct } from '@/lib/foodcostProducts'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -49,7 +50,7 @@ export default function StratyPage() {
   const [faultPersonId, setFaultPersonId] = useState('')
   const [workers, setWorkers] = useState<Worker[]>([])
 
-  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
+  const isAdmin = user ? isAdminRole(user.role) : false
 
   // Autocomplete suggestions (max 8)
   const suggestions = useMemo(() => {

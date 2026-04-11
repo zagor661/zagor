@@ -248,7 +248,7 @@ export default function ChecklistPage() {
 
   // ─── Edit functions (manager/owner only) ───────────────────
   async function addItem() {
-    if (!newItemTitle.trim()) return
+    if (!user || !newItemTitle.trim()) return
     const maxSort = items.length > 0 ? Math.max(...items.map(i => i.sort_order)) : 0
 
     await supabase.from('checklist_items').insert({
@@ -266,7 +266,7 @@ export default function ChecklistPage() {
   }
 
   async function updateItem(itemId: string) {
-    if (!editingTitle.trim()) return
+    if (!user || !editingTitle.trim()) return
     await supabase
       .from('checklist_items')
       .update({ title: editingTitle.trim() })
@@ -278,6 +278,7 @@ export default function ChecklistPage() {
   }
 
   async function removeItem(itemId: string) {
+    if (!user) return
     // Soft delete — set is_active = false
     await supabase
       .from('checklist_items')
@@ -289,6 +290,7 @@ export default function ChecklistPage() {
   }
 
   async function moveItem(itemId: string, direction: 'up' | 'down') {
+    if (!user) return
     const idx = items.findIndex(i => i.id === itemId)
     if (direction === 'up' && idx <= 0) return
     if (direction === 'down' && idx >= items.length - 1) return

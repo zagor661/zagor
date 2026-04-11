@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { isAdminRole } from '@/lib/roles'
 
 interface WorkerTask {
   id: string
@@ -36,7 +37,7 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<'mine' | 'created' | 'all'>('mine')
 
-  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
+  const isAdmin = user ? isAdminRole(user.role) : false
 
   useEffect(() => {
     if (authLoading || !user) return
