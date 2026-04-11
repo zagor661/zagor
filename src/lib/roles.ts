@@ -88,6 +88,15 @@ const MOD_STARS: ModuleConfig = {
   bgColor: 'bg-yellow-50',
 }
 
+const MOD_CHECKLIST: ModuleConfig = {
+  href: '/checklist',
+  icon: '✅',
+  title: 'Checklist',
+  subtitle: 'Otwarcie · W ciągu dnia · Zamknięcie · Tydzień',
+  borderColor: 'border-emerald-200',
+  bgColor: 'bg-gradient-to-br from-emerald-50 to-green-50',
+}
+
 // ─── Moduły kuchni ──────────────────────────────────────────
 
 const MOD_SANEPID: ModuleConfig = {
@@ -168,7 +177,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystość, straty, HACCP',
-    modules: [MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE],
   },
   hall: {
     key: 'hall',
@@ -180,7 +189,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-purple-500',
     gradientTo: 'to-fuchsia-400',
     description: 'Zadania, grafik, posiłki, usterki',
-    modules: [MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE],
+    modules: [MOD_CHECKLIST, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE],
   },
   manager: {
     key: 'manager',
@@ -192,7 +201,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pełen dostęp + gwiazdki + raporty',
-    modules: [MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
   },
   owner: {
     key: 'owner',
@@ -204,7 +213,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podgląd wszystkiego + ustawienia',
-    modules: [MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
   },
 }
 
