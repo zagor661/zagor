@@ -319,19 +319,7 @@ export default function ChecklistPage() {
           <button onClick={() => router.push('/')} className="text-sm text-gray-500 hover:text-gray-900">
             ← Wróć
           </button>
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <button
-                onClick={() => setEditMode(!editMode)}
-                className={`text-xs px-3 py-1.5 rounded-lg font-bold transition ${
-                  editMode ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {editMode ? '✕ Zamknij edycję' : '✏️ Edytuj listę'}
-              </button>
-            )}
-            <p className="text-xs text-gray-400">{user.location_name}</p>
-          </div>
+          <p className="text-xs text-gray-400">{user.location_name}</p>
         </div>
 
         <div className="text-center py-1">
@@ -394,6 +382,20 @@ export default function ChecklistPage() {
             )
           })}
         </div>
+
+        {/* Edit toggle — big block for manager/owner */}
+        {isAdmin && (
+          <button
+            onClick={() => setEditMode(!editMode)}
+            className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all ${
+              editMode
+                ? 'bg-red-100 text-red-700 border-2 border-red-300'
+                : 'bg-blue-50 text-blue-700 border-2 border-blue-200 hover:bg-blue-100'
+            }`}
+          >
+            {editMode ? '✕ Zamknij edycję' : '✏️ Edytuj listę'}
+          </button>
+        )}
 
         {/* Edit mode banner */}
         {editMode && (
