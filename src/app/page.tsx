@@ -133,7 +133,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                Cześć, {user.full_name.split(' ')[0]}! 👋
+                {role === 'owner' ? 'Owner 🥷' : `Cześć, ${user.full_name.split(' ')[0]}! 👋`}
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${roleConfig.bgColor} ${roleConfig.color}`}>
