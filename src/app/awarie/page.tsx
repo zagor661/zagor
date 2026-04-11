@@ -110,7 +110,7 @@ export default function BreakdownsPage() {
   const [saving, setSaving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
 
   useEffect(() => {
     if (authLoading || !user) return

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
+import { ROLES, normalizeRole } from '@/lib/roles'
 
 interface Profile {
   id: string
@@ -121,12 +122,14 @@ export default function LoginPage() {
                 onClick={() => setSelected(p)}
                 className="w-full card flex items-center gap-4 hover:border-brand-300 hover:shadow-md transition-all active:scale-98"
               >
-                <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-xl flex-shrink-0">
-                  {p.role === 'admin' ? '👑' : p.role === 'manager' ? '⭐' : '👨‍🍳'}
+                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${ROLES[normalizeRole(p.role)].gradientFrom} ${ROLES[normalizeRole(p.role)].gradientTo} flex items-center justify-center text-xl flex-shrink-0 shadow-md`}>
+                  {ROLES[normalizeRole(p.role)].icon}
                 </div>
                 <div className="text-left">
                   <div className="font-bold text-gray-900">{p.full_name}</div>
-                  <div className="text-xs text-gray-400">{p.role}</div>
+                  <div className={`text-xs font-semibold ${ROLES[normalizeRole(p.role)].color}`}>
+                    {ROLES[normalizeRole(p.role)].labelPl}
+                  </div>
                 </div>
               </button>
             ))}
@@ -147,8 +150,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-4">
       <div className="max-w-sm mx-auto pt-10">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 mx-auto rounded-full bg-brand-100 flex items-center justify-center text-3xl mb-3">
-            {selected.role === 'admin' ? '👑' : '👨‍🍳'}
+          <div className={`w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br ${ROLES[normalizeRole(selected.role)].gradientFrom} ${ROLES[normalizeRole(selected.role)].gradientTo} flex items-center justify-center text-4xl mb-3 shadow-lg`}>
+            {ROLES[normalizeRole(selected.role)].icon}
           </div>
           <h2 className="text-2xl font-bold text-gray-900">{selected.full_name}</h2>
           <button onClick={() => { setSelected(null); setPin(''); setError('') }} className="text-brand-600 text-sm mt-1">

@@ -32,7 +32,7 @@ export default function MealsPage() {
   const [allMeals, setAllMeals] = useState<any[]>([])
   const [profiles, setProfiles] = useState<Record<string, string>>({})
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {

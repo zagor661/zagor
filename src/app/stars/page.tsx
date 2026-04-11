@@ -53,7 +53,7 @@ export default function StarsPage() {
   const [reason, setReason] = useState('')
   const [sending, setSending] = useState(false)
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
 
   useEffect(() => {
     if (authLoading || !user) return

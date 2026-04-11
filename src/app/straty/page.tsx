@@ -49,7 +49,7 @@ export default function StratyPage() {
   const [faultPersonId, setFaultPersonId] = useState('')
   const [workers, setWorkers] = useState<Worker[]>([])
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
 
   // Autocomplete suggestions (max 8)
   const suggestions = useMemo(() => {

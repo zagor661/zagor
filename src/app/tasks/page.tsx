@@ -36,7 +36,7 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<'mine' | 'created' | 'all'>('mine')
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = user ? (user.role === 'owner' || user.role === 'manager' || user.role === 'admin') : false
 
   useEffect(() => {
     if (authLoading || !user) return
