@@ -168,7 +168,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystość, straty, HACCP',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_MEALS, MOD_TASKS, MOD_STARS],
+    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE],
   },
   hall: {
     key: 'hall',
@@ -180,7 +180,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-purple-500',
     gradientTo: 'to-fuchsia-400',
     description: 'Zadania, grafik, posiłki, usterki',
-    modules: [MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_STARS],
+    modules: [MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE],
   },
   manager: {
     key: 'manager',
@@ -192,7 +192,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pełen dostęp + gwiazdki + raporty',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_STARS, MOD_WOKI_TALKIE],
+    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
   },
   owner: {
     key: 'owner',
@@ -204,7 +204,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-800',
     gradientTo: 'to-gray-600',
     description: 'Podgląd wszystkiego + ustawienia',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_STARS, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
+    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
   },
 }
 
