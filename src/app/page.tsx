@@ -13,6 +13,9 @@ export default function Dashboard() {
   const [showReminder, setShowReminder] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState(0)
   const [starCount, setStarCount] = useState(0)
+  const [readinessReport, setReadinessReport] = useState<{
+    department: string; checklist_type: string; done: number; total: number; all_done: boolean; completedBy: string | null
+  }[]>([])
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -36,6 +39,67 @@ export default function Dashboard() {
         .eq('assigned_to', user!.id)
         .eq('is_completed', false)
       setPendingTasks(tasks || 0)
+
+      // Readiness report (manager/owner only)
+      const userRole = normalizeRole(user!.role)
+      if (userRole === 'manager' || userRole === 'owner') {
+        const todayStr = format(new Date(), 'yyyy-MM-dd')
+        const depts = ['kitchen', 'hall'] as const
+        const types = ['opening', 'during_day', 'closing'] as const
+        const report: typeof readinessReport = []
+
+        for (const dept of depts) {
+          for (const type of types) {
+            const { count: totalItems } = await supabase
+              .from('checklist_items')
+              .select('*', { count: 'exact', head: true })
+              .eq('location_id', user!.location_id)
+              .eq('department', dept)
+              .eq('checklist_type', type)
+              .eq('is_active', true)
+
+            const { data: log } = await supabase
+              .from('checklist_logs')
+              .select('id, all_done, completed_by')
+              .eq('location_id', user!.location_id)
+              .eq('department', dept)
+              .eq('checklist_type', type)
+              .eq('log_date', todayStr)
+              .limit(1)
+
+            let done = 0
+            let completedBy: string | null = null
+
+            if (log && log.length > 0) {
+              const { count: doneCount } = await supabase
+                .from('checklist_entries')
+                .select('*', { count: 'exact', head: true })
+                .eq('log_id', log[0].id)
+                .eq('is_completed', true)
+              done = doneCount || 0
+
+              if (log[0].completed_by) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('full_name')
+                  .eq('id', log[0].completed_by)
+                  .single()
+                completedBy = profile?.full_name || null
+              }
+            }
+
+            report.push({
+              department: dept,
+              checklist_type: type,
+              done,
+              total: totalItems || 0,
+              all_done: log?.[0]?.all_done || false,
+              completedBy,
+            })
+          }
+        }
+        setReadinessReport(report)
+      }
     }
     loadData()
 
@@ -157,6 +221,52 @@ export default function Dashboard() {
             {showReminder.split('\n').map((line, i) => (
               <p key={i} className="text-red-700 font-bold text-sm">{line}</p>
             ))}
+          </div>
+        )}
+
+        {/* ─── Readiness Report (manager/owner) ─────── */}
+        {isAdmin && readinessReport.length > 0 && (
+          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              📋 Raport gotowości — dziś
+            </h2>
+            {['kitchen', 'hall'].map(dept => {
+              const deptItems = readinessReport.filter(r => r.department === dept)
+              const deptLabel = dept === 'kitchen' ? '🍳 Kuchnia' : '🍽️ Sala'
+              return (
+                <div key={dept} className="space-y-1.5">
+                  <p className="text-xs font-bold text-gray-600">{deptLabel}</p>
+                  {deptItems.map(item => {
+                    const typeLabel = item.checklist_type === 'opening' ? 'Otwarcie'
+                      : item.checklist_type === 'during_day' ? 'W ciągu dnia'
+                      : 'Zamknięcie'
+                    const pct = item.total > 0 ? Math.round((item.done / item.total) * 100) : 0
+                    const status = item.all_done
+                      ? { icon: '✅', color: 'text-green-700', bg: 'bg-green-50' }
+                      : item.done > 0
+                        ? { icon: '⚠️', color: 'text-amber-700', bg: 'bg-amber-50' }
+                        : { icon: '⏳', color: 'text-gray-400', bg: 'bg-gray-50' }
+
+                    return (
+                      <div key={`${dept}-${item.checklist_type}`} className={`flex items-center justify-between px-3 py-2 rounded-xl ${status.bg}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{status.icon}</span>
+                          <span className={`text-xs font-medium ${status.color}`}>{typeLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {item.completedBy && item.all_done && (
+                            <span className="text-[10px] text-gray-400">{item.completedBy}</span>
+                          )}
+                          <span className={`text-xs font-bold ${status.color}`}>
+                            {item.done}/{item.total}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
           </div>
         )}
 
