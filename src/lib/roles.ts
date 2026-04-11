@@ -168,7 +168,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystość, straty, HACCP',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE],
+    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE],
   },
   hall: {
     key: 'hall',
