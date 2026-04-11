@@ -54,6 +54,9 @@ export default function LoginPage() {
         .eq('is_active', true)
         .order('full_name')
       if (data) {
+        // Sortuj wg rangi: owner > manager > kitchen > hall
+        const roleOrder: Record<string, number> = { owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3 }
+        data.sort((a: Profile, b: Profile) => (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9))
         setProfiles(data)
 
         // Fetch star counts for belt colors

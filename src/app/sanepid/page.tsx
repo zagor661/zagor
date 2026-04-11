@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useUser } from '@/lib/useUser'
+import { normalizeRole } from '@/lib/roles'
 
 export default function SanepidHub() {
   const { user, loading } = useUser()
@@ -22,6 +23,11 @@ export default function SanepidHub() {
   const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   if (loading || !user) return null
+
+  const role = normalizeRole(user.role)
+  const isYurii = user.full_name.toLowerCase().includes('yurii')
+  // Tryb kontroli: tylko owner, manager lub Yurii (chef kuchni)
+  const canSendReport = role === 'owner' || role === 'manager' || isYurii
 
   // Oblicz zakres dat: bieżący miesiąc od 1. do dziś
   const getCurrentMonthRange = () => {
@@ -158,23 +164,25 @@ export default function SanepidHub() {
             <div className="flex items-center gap-4">
               <span className="text-4xl">📉</span>
               <div className="flex-1">
-                <h2 className="text-lg font-bold text-gray-900">Lista strat</h2>
+                <h2 className="text-lg font-bold text-gray-900">Straty</h2>
                 <p className="text-sm text-gray-500">Zgłoś stratę produktową z wyceną</p>
               </div>
               <span className="text-gray-300 text-2xl">›</span>
             </div>
           </Link>
 
-          <Link href="/sanepid/raport" className="block card border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-blue-50 hover:shadow-md transition-shadow active:scale-98">
-            <div className="flex items-center gap-4">
-              <span className="text-4xl">📄</span>
-              <div className="flex-1">
-                <h2 className="text-lg font-bold text-gray-900">Raport Sanepid (PDF)</h2>
-                <p className="text-sm text-gray-500">Generator raportu HACCP — miesięczny lub custom zakres</p>
+          {canSendReport && (
+            <Link href="/sanepid/raport" className="block card border-2 border-teal-200 bg-gradient-to-br from-teal-50 to-blue-50 hover:shadow-md transition-shadow active:scale-98">
+              <div className="flex items-center gap-4">
+                <span className="text-4xl">📄</span>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-gray-900">Raport Sanepid (PDF)</h2>
+                  <p className="text-sm text-gray-500">Generator raportu HACCP — miesięczny lub custom zakres</p>
+                </div>
+                <span className="text-gray-300 text-2xl">›</span>
               </div>
-              <span className="text-gray-300 text-2xl">›</span>
-            </div>
-          </Link>
+            </Link>
+          )}
 
         </div>
 
@@ -184,8 +192,9 @@ export default function SanepidHub() {
         </div>
 
         {/* ========================================================
-            TRYB KONTROLI — szybki generator + wysyłka do inspektora
+            TRYB KONTROLI — tylko owner/manager/Yurii
             ======================================================== */}
+        {canSendReport && (
         <div className="pt-6">
           {!inspMode ? (
             <button
@@ -337,6 +346,7 @@ export default function SanepidHub() {
             </div>
           )}
         </div>
+        )}
 
       </div>
     </div>

@@ -120,7 +120,7 @@ const MOD_CLEANING: ModuleConfig = {
 const MOD_STRATY: ModuleConfig = {
   href: '/straty',
   icon: '📉',
-  title: 'Straty i odpisy',
+  title: 'Straty',
   subtitle: 'Rejestracja strat żywności',
   borderColor: 'border-rose-200',
   bgColor: 'bg-rose-50',
@@ -168,7 +168,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystość, straty, HACCP',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE],
+    modules: [MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE],
   },
   hall: {
     key: 'hall',
@@ -192,7 +192,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pełen dostęp + gwiazdki + raporty',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
+    modules: [MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
   },
   owner: {
     key: 'owner',
@@ -204,11 +204,14 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podgląd wszystkiego + ustawienia',
-    modules: [MOD_SANEPID, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
+    modules: [MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
   },
 }
 
 // ─── Helpers ────────────────────────────────────────────────
+
+// Ścieżki podstron Sanepid — dostępne dla każdego kto ma dostęp do /sanepid
+const SANEPID_SUBPAGES = ['/temperature', '/cleaning', '/straty', '/sanepid']
 
 /** Sprawdź czy rola ma dostęp do danej ścieżki */
 export function canAccess(role: RoleType, pathname: string): boolean {
@@ -216,6 +219,10 @@ export function canAccess(role: RoleType, pathname: string): boolean {
   if (!config) return false
   // Owner i manager mają dostęp do wszystkiego
   if (role === 'owner' || role === 'manager') return true
+  // Sanepid subpages — kto ma /sanepid, ma też /temperature, /cleaning, /straty
+  if (SANEPID_SUBPAGES.some(sp => pathname.startsWith(sp))) {
+    return config.modules.some(m => m.href === '/sanepid')
+  }
   // Sprawdź czy moduł jest w liście
   return config.modules.some(m => pathname.startsWith(m.href))
 }
