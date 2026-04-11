@@ -54,22 +54,31 @@ export default function LoginPage() {
         .eq('is_active', true)
         .order('full_name')
       if (data) {
-        // Sortuj wg rangi: owner > manager > kitchen > hall
-        const roleOrder: Record<string, number> = { owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3 }
-        data.sort((a: Profile, b: Profile) => (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9))
-        setProfiles(data)
-
         // Fetch star counts for belt colors
         const { data: stars } = await supabase
           .from('worker_stars')
           .select('profile_id')
+        const counts: Record<string, number> = {}
         if (stars) {
-          const counts: Record<string, number> = {}
           for (const s of stars) {
             counts[s.profile_id] = (counts[s.profile_id] || 0) + 1
           }
-          setStarCounts(counts)
         }
+        setStarCounts(counts)
+
+        // Sort: 1) role rank (owner > manager > kitchen > hall)
+        // 2) within same role: by stars descending (highest belt first)
+        const roleOrder: Record<string, number> = { owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3 }
+        data.sort((a: Profile, b: Profile) => {
+          const roleA = roleOrder[a.role] ?? 9
+          const roleB = roleOrder[b.role] ?? 9
+          if (roleA !== roleB) return roleA - roleB
+          // Same role — sort by stars descending (more stars = higher)
+          const starsA = counts[a.id] || 0
+          const starsB = counts[b.id] || 0
+          return starsB - starsA
+        })
+        setProfiles(data)
       }
       setLoading(false)
     }

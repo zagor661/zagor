@@ -44,10 +44,14 @@ export default function ChecklistPage() {
     weekly: { done: 0, total: 0 },
   })
 
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false)
+  const [newItemTitle, setNewItemTitle] = useState('')
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+
   const role = user ? normalizeRole(user.role) : 'kitchen'
-  // Determine department based on role
   const department = (role === 'hall') ? 'hall' : 'kitchen'
-  // Admin/manager/owner see both — default to kitchen, can switch
   const isAdmin = user ? isAdminRole(user.role) : false
   const [viewDept, setViewDept] = useState<'kitchen' | 'hall'>(department)
 
@@ -55,18 +59,15 @@ export default function ChecklistPage() {
 
   useEffect(() => {
     if (!user) return
-    // Set initial department based on role
     if (role === 'hall') setViewDept('hall')
     else if (role === 'kitchen') setViewDept('kitchen')
   }, [user])
 
-  // Load completion stats for all types
   useEffect(() => {
     if (!user) return
     loadAllStats()
   }, [user, viewDept])
 
-  // Load items when type or department changes
   useEffect(() => {
     if (!user) return
     loadChecklist()
@@ -81,7 +82,6 @@ export default function ChecklistPage() {
     }
 
     for (const t of TYPES) {
-      // Count total items
       const { count: total } = await supabase
         .from('checklist_items')
         .select('*', { count: 'exact', head: true })
@@ -90,7 +90,6 @@ export default function ChecklistPage() {
         .eq('checklist_type', t.key)
         .eq('is_active', true)
 
-      // Check today's log
       const { data: log } = await supabase
         .from('checklist_logs')
         .select('id, all_done')
@@ -120,7 +119,6 @@ export default function ChecklistPage() {
     setLoadingItems(true)
     setSaved(false)
 
-    // Load items
     const { data: itemsData } = await supabase
       .from('checklist_items')
       .select('id, title, sort_order')
@@ -132,7 +130,6 @@ export default function ChecklistPage() {
 
     setItems(itemsData || [])
 
-    // Load or create today's log
     const { data: existingLog } = await supabase
       .from('checklist_logs')
       .select('id')
@@ -160,7 +157,6 @@ export default function ChecklistPage() {
         .single()
       currentLogId = newLog?.id || ''
 
-      // Create entries for all items
       if (currentLogId && itemsData) {
         const entriesToInsert = itemsData.map(item => ({
           log_id: currentLogId,
@@ -175,7 +171,6 @@ export default function ChecklistPage() {
 
     setLogId(currentLogId)
 
-    // Load entries
     const { data: entriesData } = await supabase
       .from('checklist_entries')
       .select('item_id, is_completed')
@@ -192,7 +187,7 @@ export default function ChecklistPage() {
   }
 
   async function toggleItem(itemId: string) {
-    if (!logId) return
+    if (!logId || editMode) return
     const newValue = !entries[itemId]
     setEntries(prev => ({ ...prev, [itemId]: newValue }))
 
@@ -213,7 +208,6 @@ export default function ChecklistPage() {
 
     const allDone = items.every(item => entries[item.id])
 
-    // Update log
     await supabase
       .from('checklist_logs')
       .update({
@@ -223,11 +217,9 @@ export default function ChecklistPage() {
       })
       .eq('id', logId)
 
-    // If NOT all done → create tasks for uncompleted items
     if (!allDone) {
       const uncompleted = items.filter(item => !entries[item.id])
       for (const item of uncompleted) {
-        // Check if task already exists for today
         const { data: existing } = await supabase
           .from('worker_tasks')
           .select('id')
@@ -254,6 +246,63 @@ export default function ChecklistPage() {
     setSaved(true)
   }
 
+  // ─── Edit functions (manager/owner only) ───────────────────
+  async function addItem() {
+    if (!newItemTitle.trim()) return
+    const maxSort = items.length > 0 ? Math.max(...items.map(i => i.sort_order)) : 0
+
+    await supabase.from('checklist_items').insert({
+      location_id: user!.location_id,
+      department: viewDept,
+      checklist_type: activeType,
+      title: newItemTitle.trim(),
+      sort_order: maxSort + 1,
+      is_active: true,
+    })
+
+    setNewItemTitle('')
+    await loadChecklist()
+    await loadAllStats()
+  }
+
+  async function updateItem(itemId: string) {
+    if (!editingTitle.trim()) return
+    await supabase
+      .from('checklist_items')
+      .update({ title: editingTitle.trim() })
+      .eq('id', itemId)
+
+    setEditingItemId(null)
+    setEditingTitle('')
+    await loadChecklist()
+  }
+
+  async function removeItem(itemId: string) {
+    // Soft delete — set is_active = false
+    await supabase
+      .from('checklist_items')
+      .update({ is_active: false })
+      .eq('id', itemId)
+
+    await loadChecklist()
+    await loadAllStats()
+  }
+
+  async function moveItem(itemId: string, direction: 'up' | 'down') {
+    const idx = items.findIndex(i => i.id === itemId)
+    if (direction === 'up' && idx <= 0) return
+    if (direction === 'down' && idx >= items.length - 1) return
+
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    const currentSort = items[idx].sort_order
+    const swapSort = items[swapIdx].sort_order
+
+    await supabase.from('checklist_items').update({ sort_order: swapSort }).eq('id', items[idx].id)
+    await supabase.from('checklist_items').update({ sort_order: currentSort }).eq('id', items[swapIdx].id)
+
+    await loadChecklist()
+  }
+
   if (loading || !user) return null
 
   const doneCount = items.filter(i => entries[i.id]).length
@@ -270,7 +319,19 @@ export default function ChecklistPage() {
           <button onClick={() => router.push('/')} className="text-sm text-gray-500 hover:text-gray-900">
             ← Wróć
           </button>
-          <p className="text-xs text-gray-400">{user.location_name}</p>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-bold transition ${
+                  editMode ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {editMode ? '✕ Zamknij edycję' : '✏️ Edytuj listę'}
+              </button>
+            )}
+            <p className="text-xs text-gray-400">{user.location_name}</p>
+          </div>
         </div>
 
         <div className="text-center py-1">
@@ -334,8 +395,15 @@ export default function ChecklistPage() {
           })}
         </div>
 
-        {/* Progress bar */}
-        {totalCount > 0 && (
+        {/* Edit mode banner */}
+        {editMode && (
+          <div className="rounded-xl bg-blue-50 border-2 border-blue-200 p-3 text-xs text-blue-800">
+            <b>✏️ Tryb edycji</b> — dodawaj, edytuj i usuwaj pozycje z checklisty. Zmiany widoczne dla wszystkich.
+          </div>
+        )}
+
+        {/* Progress bar (hidden in edit mode) */}
+        {!editMode && totalCount > 0 && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
               <span>{activeTypeConfig.icon} {activeTypeConfig.label}</span>
@@ -352,6 +420,27 @@ export default function ChecklistPage() {
           </div>
         )}
 
+        {/* Add new item (edit mode) */}
+        {editMode && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newItemTitle}
+              onChange={e => setNewItemTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addItem()}
+              placeholder="Nowa pozycja..."
+              className="flex-1 px-3 py-2.5 rounded-xl border-2 border-gray-200 text-sm focus:border-blue-400 focus:outline-none"
+            />
+            <button
+              onClick={addItem}
+              disabled={!newItemTitle.trim()}
+              className="px-4 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-bold disabled:opacity-40"
+            >
+              + Dodaj
+            </button>
+          </div>
+        )}
+
         {/* Items */}
         {loadingItems ? (
           <div className="text-center py-8">
@@ -360,9 +449,58 @@ export default function ChecklistPage() {
         ) : items.length === 0 ? (
           <div className="card text-center py-8">
             <p className="text-gray-500">Brak zadań na liście.</p>
-            <p className="text-gray-400 text-xs mt-1">Menager lub Owner może dodać zadania w ustawieniach.</p>
+            <p className="text-gray-400 text-xs mt-1">
+              {isAdmin ? 'Kliknij "Edytuj listę" aby dodać zadania.' : 'Menager lub Owner może dodać zadania.'}
+            </p>
+          </div>
+        ) : editMode ? (
+          /* ─── Edit mode items ─────────────────────── */
+          <div className="space-y-2">
+            {items.map((item, idx) => (
+              <div key={item.id} className="card border-2 border-gray-200 flex items-center gap-2">
+                {editingItemId === item.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={e => setEditingTitle(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && updateItem(item.id)}
+                      className="flex-1 px-2 py-1 rounded-lg border border-gray-300 text-sm focus:outline-none focus:border-blue-400"
+                      autoFocus
+                    />
+                    <button onClick={() => updateItem(item.id)} className="text-green-600 text-xs font-bold px-2">✓</button>
+                    <button onClick={() => { setEditingItemId(null); setEditingTitle('') }} className="text-gray-400 text-xs px-2">✕</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        onClick={() => moveItem(item.id, 'up')}
+                        disabled={idx === 0}
+                        className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-20"
+                      >▲</button>
+                      <button
+                        onClick={() => moveItem(item.id, 'down')}
+                        disabled={idx === items.length - 1}
+                        className="text-gray-400 hover:text-gray-700 text-xs disabled:opacity-20"
+                      >▼</button>
+                    </div>
+                    <span className="text-sm text-gray-800 flex-1">{item.title}</span>
+                    <button
+                      onClick={() => { setEditingItemId(item.id); setEditingTitle(item.title) }}
+                      className="text-blue-500 text-xs font-bold px-2"
+                    >✏️</button>
+                    <button
+                      onClick={() => removeItem(item.id)}
+                      className="text-red-400 hover:text-red-600 text-xs font-bold px-2"
+                    >🗑️</button>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
+          /* ─── Normal mode items ───────────────────── */
           <div className="space-y-2">
             {items.map((item, idx) => (
               <button
@@ -389,8 +527,8 @@ export default function ChecklistPage() {
           </div>
         )}
 
-        {/* Submit button */}
-        {items.length > 0 && (
+        {/* Submit button (hidden in edit mode) */}
+        {!editMode && items.length > 0 && (
           <button
             onClick={handleSubmit}
             disabled={saving || doneCount === 0}
