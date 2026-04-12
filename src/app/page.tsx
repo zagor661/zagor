@@ -16,6 +16,11 @@ export default function Dashboard() {
   const [readinessReport, setReadinessReport] = useState<{
     department: string; checklist_type: string; done: number; total: number; all_done: boolean; completedBy: string | null
   }[]>([])
+  const [todayShifts, setTodayShifts] = useState<{ worker_name: string; department: string; start_time: string; end_time: string; worker_id: string }[]>([])
+  const [todayClock, setTodayClock] = useState<{ worker_id: string; clock_in: string | null; clock_out: string | null }[]>([])
+  const [minKitchen, setMinKitchen] = useState(2)
+  const [minHall, setMinHall] = useState(1)
+  const [pendingSwaps, setPendingSwaps] = useState(0)
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -39,6 +44,57 @@ export default function Dashboard() {
         .eq('assigned_to', user!.id)
         .eq('is_completed', false)
       setPendingTasks(tasks || 0)
+
+      // Today's shifts
+      const todayStr = format(new Date(), 'yyyy-MM-dd')
+      const { data: shiftData } = await supabase
+        .from('schedule_shifts')
+        .select('worker_id, department, start_time, end_time')
+        .eq('location_id', user!.location_id)
+        .eq('shift_date', todayStr)
+        .eq('status', 'scheduled')
+
+      if (shiftData && shiftData.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', shiftData.map(s => s.worker_id))
+
+        const enriched = shiftData.map(s => ({
+          ...s,
+          worker_name: profiles?.find(p => p.id === s.worker_id)?.full_name || '?',
+        }))
+        setTodayShifts(enriched)
+      }
+
+      // Today's clock logs
+      const { data: clockData } = await supabase
+        .from('clock_logs')
+        .select('worker_id, clock_in, clock_out')
+        .eq('location_id', user!.location_id)
+        .eq('clock_date', todayStr)
+
+      if (clockData) setTodayClock(clockData)
+
+      // Schedule settings (min staffing)
+      const { data: schedSettings } = await supabase
+        .from('schedule_settings')
+        .select('min_kitchen, min_hall')
+        .eq('location_id', user!.location_id)
+        .single()
+
+      if (schedSettings) {
+        setMinKitchen(schedSettings.min_kitchen)
+        setMinHall(schedSettings.min_hall)
+      }
+
+      // Pending swap requests for me
+      const { count: swapCount } = await supabase
+        .from('swap_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('target_id', user!.id)
+        .eq('status', 'pending')
+      setPendingSwaps(swapCount || 0)
 
       // Readiness report (manager/owner only)
       const userRole = normalizeRole(user!.role)
@@ -268,6 +324,86 @@ export default function Dashboard() {
               )
             })}
           </div>
+        )}
+
+        {/* ─── Today's Shift Widget (always for admin, hides after clock-in for workers) */}
+        {todayShifts.length > 0 && (isAdmin || !todayClock.find(c => c.worker_id === user.id)) && (
+          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                👥 Kto dzisiaj pracuje
+              </h2>
+              <Link href="/schedule" className="text-xs text-brand-600 font-medium">
+                Grafik →
+              </Link>
+            </div>
+
+            {/* Staffing alert */}
+            {(() => {
+              const kitchenCount = todayShifts.filter(s => s.department === 'kitchen').length
+              const hallCount = todayShifts.filter(s => s.department === 'hall').length
+              const understaffed = kitchenCount < minKitchen || hallCount < minHall
+              if (!understaffed) return null
+              return (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-2 text-xs font-bold text-red-700">
+                  ⚠️ Brak obsady! Kuchnia: {kitchenCount}/{minKitchen} | Sala: {hallCount}/{minHall}
+                </div>
+              )
+            })()}
+
+            <div className="space-y-1.5">
+              {todayShifts.map((s, i) => {
+                const clock = todayClock.find(c => c.worker_id === s.worker_id)
+                const isMe = s.worker_id === user.id
+                const isKitchen = s.department === 'kitchen'
+                return (
+                  <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-xl ${
+                    isKitchen ? 'bg-orange-50' : 'bg-blue-50'
+                  } ${isMe ? 'ring-2 ring-green-400' : ''}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${
+                        isKitchen ? 'bg-orange-500' : 'bg-blue-500'
+                      }`}>
+                        {isKitchen ? 'KU' : 'SA'}
+                      </span>
+                      <span className={`text-sm ${isMe ? 'font-bold' : 'font-medium'} text-gray-700`}>
+                        {s.worker_name} {isMe ? '(Ty)' : ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">
+                        {s.start_time?.slice(0,5)}-{s.end_time?.slice(0,5)}
+                      </span>
+                      {clock?.clock_in && !clock?.clock_out && (
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="W pracy" />
+                      )}
+                      {clock?.clock_out && (
+                        <span className="text-[10px] text-green-600 font-bold">OK</span>
+                      )}
+                      {!clock && (
+                        <span className="w-2 h-2 rounded-full bg-gray-300" title="Nie clockowal" />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Swap alert ───────────────────────────── */}
+        {pendingSwaps > 0 && (
+          <Link href="/schedule" className="block rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 hover:shadow-md transition-all">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔄</span>
+              <div>
+                <div className="text-sm font-bold text-amber-800">
+                  {pendingSwaps} {pendingSwaps === 1 ? 'prosba' : 'prosby'} o zamiane zmian
+                </div>
+                <div className="text-xs text-amber-600">Kliknij zeby sprawdzic</div>
+              </div>
+            </div>
+          </Link>
         )}
 
         {/* ─── Moduły per rola ───────────────────────── */}
