@@ -11,7 +11,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const to = process.env.REPORT_EMAIL || 'jakub.zagorski@gmail.com'
+    const to = process.env.REPORT_EMAIL || userEmail
+    if (!to) {
+      return NextResponse.json({ ok: false, error: 'No recipient email configured' }, { status: 400 })
+    }
     let subject = ''
     let html = ''
     let emailOk = false

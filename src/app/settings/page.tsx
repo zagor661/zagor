@@ -51,6 +51,7 @@ export default function SettingsPage() {
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, pin, is_active')
+      .eq('location_id', user!.location_id)
       .order('full_name')
     if (data) setProfiles(data)
     setLoadingProfiles(false)

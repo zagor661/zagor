@@ -1,9 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+
+type TaskStatus = 'new' | 'read' | 'in_progress' | 'done' | 'problem'
 
 interface WorkerTask {
   id: string
@@ -15,12 +17,34 @@ interface WorkerTask {
   created_by_name?: string
   due_date: string | null
   is_completed: boolean
+  status: TaskStatus
+  acknowledged_at: string | null
+  started_at: string | null
+  problem_at: string | null
+  problem_description: string | null
+  created_at: string
+}
+
+interface TaskMessage {
+  id: string
+  task_id: string
+  sender_id: string
+  sender_name: string
+  message: string
   created_at: string
 }
 
 interface Profile {
   id: string
   full_name: string
+}
+
+const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string; icon: string }> = {
+  new:         { label: 'Nowe',          color: 'text-gray-600',   bg: 'bg-gray-100',   icon: '📩' },
+  read:        { label: 'Przeczytane',   color: 'text-blue-600',   bg: 'bg-blue-50',    icon: '👁️' },
+  in_progress: { label: 'W trakcie',     color: 'text-orange-600', bg: 'bg-orange-50',  icon: '🔧' },
+  done:        { label: 'Wykonane',      color: 'text-green-600',  bg: 'bg-green-50',   icon: '✅' },
+  problem:     { label: 'Problem',       color: 'text-red-600',    bg: 'bg-red-50',     icon: '⚠️' },
 }
 
 export default function TasksPage() {
@@ -37,6 +61,17 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<'mine' | 'created' | 'all'>('mine')
 
+  // Chat state
+  const [openChatId, setOpenChatId] = useState<string | null>(null)
+  const [chatMessages, setChatMessages] = useState<TaskMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [sendingChat, setSendingChat] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // Problem report state
+  const [problemTaskId, setProblemTaskId] = useState<string | null>(null)
+  const [problemText, setProblemText] = useState('')
+
   const isAdmin = user ? isAdminRole(user.role) : false
 
   useEffect(() => {
@@ -44,6 +79,11 @@ export default function TasksPage() {
     loadTasks()
     loadWorkers()
   }, [user, authLoading, filter])
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
 
   async function loadTasks() {
     let query = supabase
@@ -53,17 +93,14 @@ export default function TasksPage() {
       .order('is_completed')
       .order('created_at', { ascending: false })
 
-    // Filter based on selected tab
     if (filter === 'mine') {
       query = query.eq('assigned_to', user!.id)
     } else if (filter === 'created') {
       query = query.eq('created_by', user!.id)
     }
-    // 'all' — no filter (everyone sees all tasks)
 
     const { data } = await query
     if (data) {
-      // Get names for assigned_to AND created_by
       const allIds = new Array<string>()
       data.forEach(t => {
         if (t.assigned_to) allIds.push(t.assigned_to)
@@ -99,6 +136,124 @@ export default function TasksPage() {
     if (data) setWorkers(data)
   }
 
+  // ─── Status transitions ────────────────────────────────────
+  async function updateStatus(taskId: string, newStatus: TaskStatus, extras?: Record<string, any>) {
+    const updates: Record<string, any> = { status: newStatus, ...extras }
+    if (newStatus === 'read') updates.acknowledged_at = new Date().toISOString()
+    if (newStatus === 'in_progress') updates.started_at = new Date().toISOString()
+    if (newStatus === 'done') {
+      updates.is_completed = true
+      updates.completed_at = new Date().toISOString()
+    }
+    if (newStatus === 'problem') {
+      updates.problem_at = new Date().toISOString()
+    }
+
+    await supabase.from('worker_tasks').update(updates).eq('id', taskId)
+
+    // If problem — push to Google Sheets
+    if (newStatus === 'problem') {
+      const task = tasks.find(t => t.id === taskId)
+      if (task && user) {
+        pushProblemToSheet(task, extras?.problem_description || '')
+      }
+    }
+
+    loadTasks()
+  }
+
+  async function pushProblemToSheet(task: WorkerTask, problemDesc: string) {
+    // Load chat messages for context
+    const { data: msgs } = await supabase
+      .from('task_messages')
+      .select('sender_name, message, created_at')
+      .eq('task_id', task.id)
+      .order('created_at')
+
+    const chatLog = msgs?.map(m =>
+      `[${new Date(m.created_at).toLocaleString('pl-PL')}] ${m.sender_name}: ${m.message}`
+    ).join('\n') || ''
+
+    fetch('/api/task-problem-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: new Date().toISOString(),
+        location: user!.location_name || '',
+        task_title: task.title,
+        task_description: task.description || '',
+        assigned_to: task.assigned_name || '',
+        created_by: task.created_by_name || '',
+        problem_description: problemDesc,
+        chat_log: chatLog,
+        due_date: task.due_date || '',
+      }),
+    }).catch(() => {})
+  }
+
+  // ─── Chat ──────────────────────────────────────────────────
+  async function openChat(taskId: string) {
+    setOpenChatId(taskId)
+    setChatInput('')
+    const { data } = await supabase
+      .from('task_messages')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at')
+    setChatMessages(data || [])
+  }
+
+  async function sendMessage() {
+    if (!chatInput.trim() || !user || !openChatId) return
+    setSendingChat(true)
+    const { error } = await supabase.from('task_messages').insert({
+      task_id: openChatId,
+      sender_id: user.id,
+      sender_name: user.full_name,
+      message: chatInput.trim(),
+    })
+    if (!error) {
+      setChatInput('')
+      const { data } = await supabase
+        .from('task_messages')
+        .select('*')
+        .eq('task_id', openChatId)
+        .order('created_at')
+      setChatMessages(data || [])
+    }
+    setSendingChat(false)
+  }
+
+  // ─── Problem flow ──────────────────────────────────────────
+  function startProblemReport(taskId: string) {
+    setProblemTaskId(taskId)
+    setProblemText('')
+  }
+
+  async function submitProblem() {
+    if (!problemTaskId || !problemText.trim()) return
+    setSaving(true)
+
+    // Add problem as first chat message
+    if (user) {
+      await supabase.from('task_messages').insert({
+        task_id: problemTaskId,
+        sender_id: user.id,
+        sender_name: user.full_name,
+        message: `⚠️ PROBLEM: ${problemText.trim()}`,
+      })
+    }
+
+    await updateStatus(problemTaskId, 'problem', {
+      problem_description: problemText.trim(),
+    })
+
+    setProblemTaskId(null)
+    setProblemText('')
+    setSaving(false)
+  }
+
+  // ─── Add task ──────────────────────────────────────────────
   async function addTask() {
     if (!newTitle.trim() || !user) return
     setSaving(true)
@@ -110,29 +265,10 @@ export default function TasksPage() {
       assigned_to: newAssign || null,
       created_by: user.id,
       due_date: newDate || null,
+      status: 'new',
     })
 
     if (error) { alert('Błąd: ' + error.message); setSaving(false); return }
-
-    // Log to Google Sheets (async, fire-and-forget)
-    const assignedName = workers.find(w => w.id === newAssign)?.full_name || ''
-    fetch('/api/send-report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'task',
-        data: {
-          created_at: new Date().toISOString(),
-          location: user.location_name,
-          created_by: user.full_name,
-          assigned_to: assignedName,
-          title: newTitle.trim(),
-          description: newDesc.trim() || '',
-          due_date: newDate || '',
-          action: 'created',
-        },
-      }),
-    }).catch(() => {})
 
     setNewTitle('')
     setNewDesc('')
@@ -143,42 +279,54 @@ export default function TasksPage() {
     loadTasks()
   }
 
-  async function toggleTask(task: WorkerTask) {
-    const willComplete = !task.is_completed
-    await supabase
-      .from('worker_tasks')
-      .update({
-        is_completed: willComplete,
-        completed_at: willComplete ? new Date().toISOString() : null,
-      })
-      .eq('id', task.id)
-
-    if (willComplete && user) {
-      fetch('/api/send-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'task',
-          data: {
-            created_at: new Date().toISOString(),
-            location: user.location_name,
-            created_by: task.created_by_name || '',
-            assigned_to: user.full_name,
-            title: task.title,
-            description: task.description || '',
-            due_date: task.due_date || '',
-            action: 'completed',
-          },
-        }),
-      }).catch(() => {})
-    }
-
-    loadTasks()
-  }
-
   async function deleteTask(id: string) {
     await supabase.from('worker_tasks').delete().eq('id', id)
     loadTasks()
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────
+  function getNextActions(task: WorkerTask): { primary?: { label: string; action: () => void; color: string }; secondary?: { label: string; action: () => void }; chat?: boolean } {
+    const isMine = task.assigned_to === user?.id
+
+    if (!isMine && !isAdmin) return { chat: task.status !== 'new' }
+
+    switch (task.status) {
+      case 'new':
+        return {
+          primary: { label: '👁️ Przeczytałem', action: () => updateStatus(task.id, 'read'), color: 'bg-blue-500 hover:bg-blue-600' },
+        }
+      case 'read':
+        return {
+          primary: { label: '🔧 Zajmuję się', action: () => updateStatus(task.id, 'in_progress'), color: 'bg-orange-500 hover:bg-orange-600' },
+          chat: true,
+        }
+      case 'in_progress':
+        return {
+          primary: { label: '✅ Done', action: () => updateStatus(task.id, 'done'), color: 'bg-green-500 hover:bg-green-600' },
+          secondary: { label: '⚠️ Problem', action: () => startProblemReport(task.id) },
+          chat: true,
+        }
+      case 'problem':
+        return {
+          primary: isAdmin ? { label: '✅ Rozwiązane', action: () => updateStatus(task.id, 'done'), color: 'bg-green-500 hover:bg-green-600' } : undefined,
+          chat: true,
+        }
+      case 'done':
+        return { chat: true }
+      default:
+        return {}
+    }
+  }
+
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const min = Math.floor(diff / 60000)
+    if (min < 1) return 'teraz'
+    if (min < 60) return `${min}min temu`
+    const h = Math.floor(min / 60)
+    if (h < 24) return `${h}h temu`
+    const d = Math.floor(h / 24)
+    return `${d}d temu`
   }
 
   if (authLoading || loading) {
@@ -212,13 +360,13 @@ export default function TasksPage() {
             onClick={() => setFilter('mine')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${filter === 'mine' ? 'bg-white shadow text-brand-600' : 'text-gray-500'}`}
           >
-            Moje zadania
+            Moje
           </button>
           <button
             onClick={() => setFilter('created')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${filter === 'created' ? 'bg-white shadow text-brand-600' : 'text-gray-500'}`}
           >
-            Utworzone przeze mnie
+            Utworzone
           </button>
           <button
             onClick={() => setFilter('all')}
@@ -274,6 +422,100 @@ export default function TasksPage() {
           </div>
         )}
 
+        {/* Problem report modal */}
+        {problemTaskId && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg p-4 space-y-3 animate-slide-up">
+              <h3 className="text-sm font-bold text-red-600 flex items-center gap-2">
+                ⚠️ Zgłoś problem
+              </h3>
+              <p className="text-xs text-gray-500">
+                Opisz krótko co się stało — wiadomość trafi do managera i na Google Drive.
+              </p>
+              <textarea
+                value={problemText}
+                onChange={e => setProblemText(e.target.value)}
+                placeholder="Co jest problemem?"
+                className="input border-red-200 focus:border-red-400"
+                rows={3}
+                autoFocus
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setProblemTaskId(null)} className="btn-white text-sm py-3">Anuluj</button>
+                <button
+                  onClick={submitProblem}
+                  disabled={saving || !problemText.trim()}
+                  className="bg-red-500 text-white rounded-xl text-sm font-bold py-3 hover:bg-red-600 disabled:opacity-50"
+                >
+                  {saving ? '...' : 'Zgłoś problem'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat modal */}
+        {openChatId && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: '70vh' }}>
+              {/* Header */}
+              <div className="p-4 border-b flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">💬 Chat</h3>
+                  <p className="text-xs text-gray-400 truncate">
+                    {tasks.find(t => t.id === openChatId)?.title}
+                  </p>
+                </div>
+                <button onClick={() => setOpenChatId(null)} className="text-gray-400 hover:text-gray-600 text-lg p-1">✕</button>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[120px]">
+                {chatMessages.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-4">Brak wiadomości — napisz pierwszą</p>
+                ) : (
+                  chatMessages.map(msg => {
+                    const isMe = msg.sender_id === user?.id
+                    return (
+                      <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${
+                          isMe ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-900'
+                        }`}>
+                          {!isMe && <div className="text-[10px] font-bold mb-0.5 opacity-70">{msg.sender_name}</div>}
+                          <div className="text-sm">{msg.message}</div>
+                          <div className={`text-[10px] mt-0.5 ${isMe ? 'text-white/60' : 'text-gray-400'}`}>
+                            {timeAgo(msg.created_at)}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="p-3 border-t flex gap-2">
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                  placeholder="Napisz wiadomość..."
+                  className="input flex-1 text-sm"
+                  autoFocus
+                />
+                <button
+                  onClick={sendMessage}
+                  disabled={sendingChat || !chatInput.trim()}
+                  className="bg-brand-500 text-white px-4 rounded-xl text-sm font-bold hover:bg-brand-600 disabled:opacity-50"
+                >
+                  ➤
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Task list */}
         {tasks.length === 0 ? (
           <div className="card text-center py-10">
@@ -288,23 +530,40 @@ export default function TasksPage() {
           <div className="space-y-2">
             {tasks.map(task => {
               const canDelete = isAdmin || task.created_by === user?.id
+              const sc = STATUS_CONFIG[task.status] || STATUS_CONFIG.new
+              const actions = getNextActions(task)
 
               return (
-                <div key={task.id} className={`card border-2 ${task.is_completed ? 'border-green-200 bg-green-50' : 'border-gray-100'}`}>
+                <div key={task.id} className={`card border-2 ${
+                  task.status === 'done' ? 'border-green-200 bg-green-50' :
+                  task.status === 'problem' ? 'border-red-200 bg-red-50' :
+                  'border-gray-100'
+                }`}>
+                  {/* Status badge */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.bg} ${sc.color}`}>
+                      {sc.icon} {sc.label}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{timeAgo(task.created_at)}</span>
+                  </div>
+
+                  {/* Task content */}
                   <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => toggleTask(task)}
-                      className={`mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 ${
-                        task.is_completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'
-                      }`}
-                    >
-                      {task.is_completed && '✓'}
-                    </button>
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm ${task.is_completed ? 'line-through text-green-800' : 'text-gray-900'}`}>
+                      <div className={`font-medium text-sm ${task.status === 'done' ? 'line-through text-green-800' : 'text-gray-900'}`}>
                         {task.title}
                       </div>
                       {task.description && <p className="text-xs text-gray-400 mt-0.5">{task.description}</p>}
+
+                      {/* Problem description */}
+                      {task.status === 'problem' && task.problem_description && (
+                        <div className="mt-2 p-2 bg-red-100 rounded-lg">
+                          <p className="text-xs text-red-700">
+                            <span className="font-bold">Problem:</span> {task.problem_description}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs">
                         {task.created_by_name && (
                           <span className="text-purple-500">
@@ -323,6 +582,36 @@ export default function TasksPage() {
                       <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 text-sm px-1">✕</button>
                     )}
                   </div>
+
+                  {/* Action buttons */}
+                  {(actions.primary || actions.secondary || actions.chat) && (
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                      {actions.primary && (
+                        <button
+                          onClick={actions.primary.action}
+                          className={`${actions.primary.color} text-white px-4 py-2 rounded-xl text-xs font-bold flex-1`}
+                        >
+                          {actions.primary.label}
+                        </button>
+                      )}
+                      {actions.secondary && (
+                        <button
+                          onClick={actions.secondary.action}
+                          className="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-200"
+                        >
+                          {actions.secondary.label}
+                        </button>
+                      )}
+                      {actions.chat && (
+                        <button
+                          onClick={() => openChat(task.id)}
+                          className="bg-gray-100 text-gray-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-gray-200"
+                        >
+                          💬 Chat
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

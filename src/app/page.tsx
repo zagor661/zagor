@@ -13,14 +13,17 @@ export default function Dashboard() {
   const [showReminder, setShowReminder] = useState<string | null>(null)
   const [pendingTasks, setPendingTasks] = useState(0)
   const [starCount, setStarCount] = useState(0)
-  const [readinessReport, setReadinessReport] = useState<{
-    department: string; checklist_type: string; done: number; total: number; all_done: boolean; completedBy: string | null
-  }[]>([])
   const [todayShifts, setTodayShifts] = useState<{ worker_name: string; department: string; start_time: string; end_time: string; worker_id: string }[]>([])
   const [todayClock, setTodayClock] = useState<{ worker_id: string; clock_in: string | null; clock_out: string | null }[]>([])
   const [minKitchen, setMinKitchen] = useState(2)
   const [minHall, setMinHall] = useState(1)
   const [pendingSwaps, setPendingSwaps] = useState(0)
+  // Report section data
+  const [reportData, setReportData] = useState<{
+    todayMeals: number; weekMeals: number; monthMeals: number;
+    todayIssues: number; weekIssues: number; monthIssues: number;
+    todayShiftsCount: number; weekShiftsCount: number; monthShiftsCount: number;
+  }>({ todayMeals: 0, weekMeals: 0, monthMeals: 0, todayIssues: 0, weekIssues: 0, monthIssues: 0, todayShiftsCount: 0, weekShiftsCount: 0, monthShiftsCount: 0 })
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -96,65 +99,53 @@ export default function Dashboard() {
         .eq('status', 'pending')
       setPendingSwaps(swapCount || 0)
 
-      // Readiness report (manager/owner only)
+      // Report summary data (admin only)
       const userRole = normalizeRole(user!.role)
       if (userRole === 'manager' || userRole === 'owner') {
         const todayStr = format(new Date(), 'yyyy-MM-dd')
-        const depts = ['kitchen', 'hall'] as const
-        const types = ['opening', 'during_day', 'closing'] as const
-        const report: typeof readinessReport = []
+        const now = new Date()
+        const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7)
+        const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd')
+        const weekAgoStr = format(weekAgo, 'yyyy-MM-dd')
 
-        for (const dept of depts) {
-          for (const type of types) {
-            const { count: totalItems } = await supabase
-              .from('checklist_items')
-              .select('*', { count: 'exact', head: true })
-              .eq('location_id', user!.location_id)
-              .eq('department', dept)
-              .eq('checklist_type', type)
-              .eq('is_active', true)
+        // Meals counts (table may not exist yet)
+        let mToday = 0, mWeek = 0, mMonth = 0
+        try {
+          const r1 = await supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).eq('meal_date', todayStr)
+          mToday = r1.count || 0
+          const r2 = await supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('meal_date', weekAgoStr)
+          mWeek = r2.count || 0
+          const r3 = await supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('meal_date', monthStart)
+          mMonth = r3.count || 0
+        } catch { /* worker_meals table may not exist */ }
 
-            const { data: log } = await supabase
-              .from('checklist_logs')
-              .select('id, all_done, completed_by')
-              .eq('location_id', user!.location_id)
-              .eq('department', dept)
-              .eq('checklist_type', type)
-              .eq('log_date', todayStr)
-              .limit(1)
+        // Issues counts (table may not exist yet)
+        let iToday = 0, iWeek = 0, iMonth = 0
+        try {
+          const r1 = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('created_at', todayStr)
+          iToday = r1.count || 0
+          const r2 = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('created_at', weekAgoStr)
+          iWeek = r2.count || 0
+          const r3 = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('created_at', monthStart)
+          iMonth = r3.count || 0
+        } catch { /* issues table may not exist */ }
 
-            let done = 0
-            let completedBy: string | null = null
+        // Shifts counts (table may not exist yet)
+        let sToday = 0, sWeek = 0, sMonth = 0
+        try {
+          const r1 = await supabase.from('schedule_shifts').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).eq('shift_date', todayStr)
+          sToday = r1.count || 0
+          const r2 = await supabase.from('schedule_shifts').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('shift_date', weekAgoStr).lte('shift_date', todayStr)
+          sWeek = r2.count || 0
+          const r3 = await supabase.from('schedule_shifts').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('shift_date', monthStart).lte('shift_date', todayStr)
+          sMonth = r3.count || 0
+        } catch { /* schedule_shifts table may not exist */ }
 
-            if (log && log.length > 0) {
-              const { count: doneCount } = await supabase
-                .from('checklist_entries')
-                .select('*', { count: 'exact', head: true })
-                .eq('log_id', log[0].id)
-                .eq('is_completed', true)
-              done = doneCount || 0
-
-              if (log[0].completed_by) {
-                const { data: profile } = await supabase
-                  .from('profiles')
-                  .select('full_name')
-                  .eq('id', log[0].completed_by)
-                  .single()
-                completedBy = profile?.full_name || null
-              }
-            }
-
-            report.push({
-              department: dept,
-              checklist_type: type,
-              done,
-              total: totalItems || 0,
-              all_done: log?.[0]?.all_done || false,
-              completedBy,
-            })
-          }
-        }
-        setReadinessReport(report)
+        setReportData({
+          todayMeals: mToday, weekMeals: mWeek, monthMeals: mMonth,
+          todayIssues: iToday, weekIssues: iWeek, monthIssues: iMonth,
+          todayShiftsCount: sToday, weekShiftsCount: sWeek, monthShiftsCount: sMonth,
+        })
       }
     }
     loadData()
@@ -280,51 +271,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ─── Readiness Report (manager/owner) ─────── */}
-        {isAdmin && readinessReport.length > 0 && (
-          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              📋 Raport gotowości — dziś
-            </h2>
-            {['kitchen', 'hall'].map(dept => {
-              const deptItems = readinessReport.filter(r => r.department === dept)
-              const deptLabel = dept === 'kitchen' ? '🍳 Kuchnia' : '🍽️ Sala'
-              return (
-                <div key={dept} className="space-y-1.5">
-                  <p className="text-xs font-bold text-gray-600">{deptLabel}</p>
-                  {deptItems.map(item => {
-                    const typeLabel = item.checklist_type === 'opening' ? 'Otwarcie'
-                      : item.checklist_type === 'during_day' ? 'W ciągu dnia'
-                      : 'Zamknięcie'
-                    const pct = item.total > 0 ? Math.round((item.done / item.total) * 100) : 0
-                    const status = item.all_done
-                      ? { icon: '✅', color: 'text-green-700', bg: 'bg-green-50' }
-                      : item.done > 0
-                        ? { icon: '⚠️', color: 'text-amber-700', bg: 'bg-amber-50' }
-                        : { icon: '⏳', color: 'text-gray-400', bg: 'bg-gray-50' }
-
-                    return (
-                      <div key={`${dept}-${item.checklist_type}`} className={`flex items-center justify-between px-3 py-2 rounded-xl ${status.bg}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">{status.icon}</span>
-                          <span className={`text-xs font-medium ${status.color}`}>{typeLabel}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {item.completedBy && item.all_done && (
-                            <span className="text-[10px] text-gray-400">{item.completedBy}</span>
-                          )}
-                          <span className={`text-xs font-bold ${status.color}`}>
-                            {item.done}/{item.total}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        {/* (readiness report removed — use Sanepid module) */}
 
         {/* ─── Today's Shift Widget (always for admin, hides after clock-in for workers) */}
         {todayShifts.length > 0 && (isAdmin || !todayClock.find(c => c.worker_id === user.id)) && (
@@ -463,6 +410,84 @@ export default function Dashboard() {
             </div>
           </div>
         </Link>
+
+        {/* ─── Raport operacyjny (admin only) ─────────── */}
+        {isAdmin && (
+          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              Raport
+            </h2>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="text-xs font-bold text-gray-400">Dzis</div>
+              <div className="text-xs font-bold text-gray-400">Tydzien</div>
+              <div className="text-xs font-bold text-gray-400">Miesiac</div>
+            </div>
+            {/* Meals */}
+            <div className="bg-orange-50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🍽️</span>
+                <span className="text-sm font-bold text-gray-700">Posilki pracownikow</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-orange-600">{reportData.todayMeals}</div>
+                  <div className="text-[10px] text-gray-400">Dzis</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-orange-600">{reportData.weekMeals}</div>
+                  <div className="text-[10px] text-gray-400">Tydzien</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-orange-600">{reportData.monthMeals}</div>
+                  <div className="text-[10px] text-gray-400">Miesiac</div>
+                </div>
+              </div>
+            </div>
+            {/* Issues */}
+            <div className="bg-red-50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🔧</span>
+                <span className="text-sm font-bold text-gray-700">Usterki</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-red-600">{reportData.todayIssues}</div>
+                  <div className="text-[10px] text-gray-400">Dzis</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-red-600">{reportData.weekIssues}</div>
+                  <div className="text-[10px] text-gray-400">Tydzien</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-red-600">{reportData.monthIssues}</div>
+                  <div className="text-[10px] text-gray-400">Miesiac</div>
+                </div>
+              </div>
+            </div>
+            {/* Shifts */}
+            <div className="bg-blue-50 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">📅</span>
+                <span className="text-sm font-bold text-gray-700">Zmiany</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-bold text-blue-600">{reportData.todayShiftsCount}</div>
+                  <div className="text-[10px] text-gray-400">Dzis</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-blue-600">{reportData.weekShiftsCount}</div>
+                  <div className="text-[10px] text-gray-400">Tydzien</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-blue-600">{reportData.monthShiftsCount}</div>
+                  <div className="text-[10px] text-gray-400">Miesiac</div>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-gray-300 text-center">Wiecej opcji raportowania wkrotce</p>
+          </div>
+        )}
 
       </div>
     </div>

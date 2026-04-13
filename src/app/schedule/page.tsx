@@ -7,7 +7,7 @@ import supabase from '@/lib/supabase'
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, getDay,
   addMonths, subMonths, isSameDay, isSameMonth, isToday as isTodayFn,
-  parseISO, isWithinInterval
+  parseISO, isWithinInterval, startOfWeek, addDays
 } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
@@ -80,6 +80,7 @@ interface MonthStats {
   shifts_count: number
   total_hours: number
   clocked_hours: number
+  hourly_rate: number
 }
 
 interface Availability {
@@ -105,7 +106,7 @@ interface SwapRequest {
 }
 
 // ─── Tabs ───────────────────────────────────────────────────
-type TabType = 'calendar' | 'generate' | 'constraints' | 'clock' | 'stats' | 'availability' | 'swaps'
+type TabType = 'calendar' | 'generate' | 'constraints' | 'stats' | 'availability' | 'swaps'
 
 // ─── Helper: hours between two TIME strings ─────────────────
 function hoursBetween(start: string, end: string): number {
@@ -149,6 +150,12 @@ export default function SchedulePage() {
     return () => clearInterval(timer)
   }, [])
 
+  // ─── Calendar view toggle (week / month) ───────────────────
+  const [calendarView, setCalendarView] = useState<'week' | 'month'>('week')
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  )
+
   // ─── Selected day for detail view ─────────────────────────
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
 
@@ -162,6 +169,9 @@ export default function SchedulePage() {
   const [availTo, setAvailTo] = useState('')
   const [availType, setAvailType] = useState<'unavailable' | 'preferred_off' | 'vacation'>('unavailable')
   const [availReason, setAvailReason] = useState('')
+
+  // Hourly rates state (worker_id -> PLN/h)
+  const [hourlyRates, setHourlyRates] = useState<Record<string, number>>({})
 
   // Swap state
   const [swapMyShiftId, setSwapMyShiftId] = useState('')
@@ -181,12 +191,17 @@ export default function SchedulePage() {
       // Load workers
       const { data: wData } = await supabase
         .from('profiles')
-        .select('id, full_name, role, is_head_chef')
+        .select('id, full_name, role, is_head_chef, hourly_rate')
         .eq('is_active', true)
         .in('role', ['kitchen', 'hall'])
         .order('role')
 
-      if (wData) setWorkers(wData)
+      if (wData) {
+        setWorkers(wData)
+        const rates: Record<string, number> = {}
+        wData.forEach((w: any) => { rates[w.id] = w.hourly_rate || 0 })
+        setHourlyRates(rates)
+      }
 
       // Load settings
       const { data: sData } = await supabase
@@ -197,16 +212,20 @@ export default function SchedulePage() {
 
       if (sData) setSettings(sData)
 
-      // Load shifts for current month
+      // Load shifts — cover both month view AND current week view range
       const monthStart = format(currentMonth, 'yyyy-MM-01')
       const monthEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd')
+      const weekStart = format(currentWeekStart, 'yyyy-MM-dd')
+      const weekEnd = format(addDays(currentWeekStart, 6), 'yyyy-MM-dd')
+      const rangeStart = monthStart < weekStart ? monthStart : weekStart
+      const rangeEnd = monthEnd > weekEnd ? monthEnd : weekEnd
 
       const { data: shData } = await supabase
         .from('schedule_shifts')
         .select('*')
         .eq('location_id', user.location_id)
-        .gte('shift_date', monthStart)
-        .lte('shift_date', monthEnd)
+        .gte('shift_date', rangeStart)
+        .lte('shift_date', rangeEnd)
         .order('shift_date')
 
       if (shData) {
@@ -269,7 +288,7 @@ export default function SchedulePage() {
       setError(e.message)
     }
     setLoadingData(false)
-  }, [user, currentMonth])
+  }, [user, currentMonth, currentWeekStart])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -292,6 +311,24 @@ export default function SchedulePage() {
     const dayStr = format(day, 'yyyy-MM-dd')
     return shifts.filter(s => s.shift_date === dayStr)
   }, [shifts])
+
+  // ─── Week days for weekly view ─────────────────────────────
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i))
+  }, [currentWeekStart])
+
+  // ─── My week summary (for weekly view) ────────────────────
+  const myWeekSummary = useMemo(() => {
+    if (!user) return { shifts: 0, hours: 0 }
+    let count = 0, hours = 0
+    for (const day of weekDays) {
+      const dayStr = format(day, 'yyyy-MM-dd')
+      const myShifts = shifts.filter(s => s.shift_date === dayStr && s.worker_id === user.id)
+      count += myShifts.length
+      myShifts.forEach(s => { hours += hoursBetween(s.start_time, s.end_time) })
+    }
+    return { shifts: count, hours }
+  }, [shifts, user, weekDays])
 
   // ─── Check if worker is unavailable on a date ─────────────
   const isWorkerUnavailable = useCallback((workerId: string, dateStr: string) => {
@@ -327,6 +364,7 @@ export default function SchedulePage() {
         shifts_count: 0,
         total_hours: 0,
         clocked_hours: 0,
+        hourly_rate: hourlyRates[w.id] || 0,
       })
     })
     shifts.forEach(sh => {
@@ -343,7 +381,7 @@ export default function SchedulePage() {
       }
     })
     return Array.from(statsMap.values()).sort((a, b) => a.department.localeCompare(b.department))
-  }, [workers, shifts, clockLogs])
+  }, [workers, shifts, clockLogs, hourlyRates])
 
   // ─── Pending swaps for me ─────────────────────────────────
   const pendingSwapsForMe = useMemo(() => {
@@ -406,7 +444,7 @@ export default function SchedulePage() {
     if (err) setError(err.message)
     else {
       const name = workerId ? workers.find(w => w.id === workerId)?.full_name : 'Ty'
-      setSuccess(`Clock OUT: ${name} \u2014 ${hours.toFixed(1)}h`)
+      setSuccess(`Clock OUT: ${name} — ${hours.toFixed(1)}h`)
       loadData()
     }
     setSaving(false)
@@ -761,7 +799,7 @@ export default function SchedulePage() {
       target_accepted_at: new Date().toISOString(),
     }).eq('id', swapId)
     if (err) setError(err.message)
-    else { setSuccess('Zaakceptowano zamiane \u2014 czeka na Menagera'); loadData() }
+    else { setSuccess('Zaakceptowano zamiane — czeka na Menagera'); loadData() }
     setTimeout(() => setSuccess(''), 3000)
   }
 
@@ -820,15 +858,21 @@ export default function SchedulePage() {
       ? { bg: 'bg-orange-100', text: 'text-orange-700', badge: 'bg-orange-500' }
       : { bg: 'bg-blue-100', text: 'text-blue-700', badge: 'bg-blue-500' }
 
-  // Tab config
-  const allTabs: [TabType, string][] = [
-    ['calendar' as TabType, 'Kalendarz'],
-    ...(isAdmin ? [['generate' as TabType, 'Generuj'] as [TabType, string], ['constraints' as TabType, 'Zasady'] as [TabType, string]] : []),
-    ['availability' as TabType, 'Dostepnosc'],
-    ['clock' as TabType, 'Obecnosc'],
-    ['swaps' as TabType, `Zamiany${pendingSwapsForMe.length + pendingSwapsForAdmin.length > 0 ? ` (${pendingSwapsForMe.length + pendingSwapsForAdmin.length})` : ''}`],
-    ['stats' as TabType, 'Statystyki'],
-  ]
+  // Tab config — workers: calendar + availability + swaps; admin: all
+  const allTabs: [TabType, string][] = isAdmin
+    ? [
+        ['calendar' as TabType, 'Kalendarz'],
+        ['generate' as TabType, 'Generuj'],
+        ['constraints' as TabType, 'Zasady'],
+        ['availability' as TabType, 'Dostepnosc'],
+        ['swaps' as TabType, `Zamiany${pendingSwapsForMe.length + pendingSwapsForAdmin.length > 0 ? ` (${pendingSwapsForMe.length + pendingSwapsForAdmin.length})` : ''}`],
+        ['stats' as TabType, 'Statystyki'],
+      ]
+    : [
+        ['calendar' as TabType, 'Kalendarz'],
+        ['availability' as TabType, 'Dostepnosc'],
+        ['swaps' as TabType, `Zamiany${pendingSwapsForMe.length > 0 ? ` (${pendingSwapsForMe.length})` : ''}`],
+      ]
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 pb-8">
@@ -935,27 +979,27 @@ export default function SchedulePage() {
         )}
 
         {/* ═══════════════════════════════════════════════════ */}
-        {/* TAB: CALENDAR                                       */}
+        {/* TAB: CALENDAR (week / month toggle)                 */}
         {/* ═══════════════════════════════════════════════════ */}
         {!loadingData && tab === 'calendar' && (
           <>
-            {/* Month nav */}
-            <div className="card flex items-center justify-between">
-              <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
-                <span className="text-lg">&laquo;</span>
+            {/* View toggle: Tydzien / Miesiac */}
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+              <button
+                onClick={() => setCalendarView('week')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                  calendarView === 'week' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                Tydzien
               </button>
-              <div className="text-center">
-                <div className="font-bold capitalize">
-                  {format(currentMonth, 'LLLL yyyy', { locale: pl })}
-                </div>
-                {!isSameMonth(currentMonth, new Date()) && (
-                  <button onClick={() => setCurrentMonth(startOfMonth(new Date()))} className="text-brand-600 text-xs font-medium">
-                    Dzis
-                  </button>
-                )}
-              </div>
-              <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
-                <span className="text-lg">&raquo;</span>
+              <button
+                onClick={() => setCalendarView('month')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                  calendarView === 'month' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500'
+                }`}
+              >
+                Miesiac
               </button>
             </div>
 
@@ -971,9 +1015,6 @@ export default function SchedulePage() {
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       Menager: {approval.manager_approved ? 'TAK' : 'NIE'} | Head Chef: {approval.headchef_approved ? 'TAK' : 'NIE'}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      Deadline: {approval.approval_deadline}
                     </div>
                   </div>
                   {approval.status === 'pending' && (
@@ -991,125 +1032,278 @@ export default function SchedulePage() {
               </div>
             )}
 
-            {/* Calendar grid */}
-            <div className="card p-2">
-              <div className="grid grid-cols-7 mb-1">
-                {DAY_NAMES.map(d => (
-                  <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-0.5">
-                {calendarDays.map((day, idx) => {
-                  const inMonth = isSameMonth(day, currentMonth)
-                  const today = isTodayFn(day)
+            {/* ─── WEEKLY VIEW ───────────────────────────────── */}
+            {calendarView === 'week' && (
+              <>
+                {/* Week nav */}
+                <div className="card flex items-center justify-between">
+                  <button onClick={() => { const nw = addDays(currentWeekStart, -7); setCurrentWeekStart(nw); if (nw.getMonth() !== currentMonth.getMonth() || nw.getFullYear() !== currentMonth.getFullYear()) setCurrentMonth(nw) }} className="p-2 rounded-xl hover:bg-gray-100">
+                    <span className="text-lg">&laquo;</span>
+                  </button>
+                  <div className="text-center">
+                    <div className="font-bold text-sm">
+                      {format(currentWeekStart, 'd MMM', { locale: pl })} &mdash; {format(addDays(currentWeekStart, 6), 'd MMM yyyy', { locale: pl })}
+                    </div>
+                    {!isSameDay(currentWeekStart, startOfWeek(new Date(), { weekStartsOn: 1 })) && (
+                      <button onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))} className="text-brand-600 text-xs font-medium mt-0.5">
+                        Biezacy tydzien
+                      </button>
+                    )}
+                  </div>
+                  <button onClick={() => { const nw = addDays(currentWeekStart, 7); setCurrentWeekStart(nw); if (nw.getMonth() !== currentMonth.getMonth() || nw.getFullYear() !== currentMonth.getFullYear()) setCurrentMonth(nw) }} className="p-2 rounded-xl hover:bg-gray-100">
+                    <span className="text-lg">&raquo;</span>
+                  </button>
+                </div>
+
+                {/* My week summary */}
+                <div className="card bg-brand-50 border-2 border-brand-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-gray-500 uppercase font-semibold">Twoj tydzien</div>
+                      <div className="text-lg font-bold mt-0.5">
+                        {myWeekSummary.shifts} {myWeekSummary.shifts === 1 ? 'zmiana' : myWeekSummary.shifts < 5 ? 'zmiany' : 'zmian'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 uppercase font-semibold">Godziny</div>
+                      <div className="text-lg font-bold mt-0.5">{Math.round(myWeekSummary.hours)}h</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Days list */}
+                {weekDays.map(day => {
                   const dayShifts = shiftsForDay(day)
-                  const kitchenCount = dayShifts.filter(s => s.department === 'kitchen').length
-                  const hallCount = dayShifts.filter(s => s.department === 'hall').length
-                  const isSelected = selectedDay && isSameDay(day, selectedDay)
+                  const isToday = isTodayFn(day)
                   const hasMyShift = dayShifts.some(s => s.worker_id === user.id)
 
                   return (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedDay(isSameDay(day, selectedDay || new Date(0)) ? null : day)}
-                      className={`relative p-1 rounded-lg text-center min-h-[52px] transition-all ${
-                        !inMonth ? 'opacity-30' :
-                        isSelected ? 'bg-brand-100 ring-2 ring-brand-500' :
-                        today ? 'bg-brand-50 ring-1 ring-brand-300' :
-                        hasMyShift ? 'bg-green-50' :
-                        'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className={`text-xs font-bold ${today ? 'text-brand-600' : inMonth ? 'text-gray-700' : 'text-gray-300'}`}>
-                        {format(day, 'd')}
+                    <div key={day.toISOString()} className={`card ${isToday ? 'border-2 border-brand-400 shadow-md' : ''} ${hasMyShift && !isToday ? 'border-2 border-green-200' : ''}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <span className="font-bold capitalize">{format(day, 'EEEE', { locale: pl })}</span>
+                          <span className="text-gray-400 text-sm ml-2">{format(day, 'd MMMM', { locale: pl })}</span>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {isToday && <span className="text-xs bg-brand-500 text-white px-2 py-0.5 rounded-full font-bold">DZIS</span>}
+                          {hasMyShift && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full font-bold">TWOJA</span>}
+                        </div>
                       </div>
-                      {inMonth && dayShifts.length > 0 && (
-                        <div className="flex justify-center gap-0.5 mt-0.5">
-                          {kitchenCount > 0 && (
-                            <span className="text-[8px] bg-orange-400 text-white rounded px-0.5 font-bold">{kitchenCount}K</span>
-                          )}
-                          {hallCount > 0 && (
-                            <span className="text-[8px] bg-blue-400 text-white rounded px-0.5 font-bold">{hallCount}S</span>
-                          )}
+
+                      {dayShifts.length === 0 ? (
+                        <p className="text-gray-300 text-sm text-center py-2">Brak zmian</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Group by department */}
+                          {['kitchen', 'hall'].map(dept => {
+                            const deptShifts = dayShifts.filter(s => s.department === dept)
+                            if (deptShifts.length === 0) return null
+                            const colors = deptColor(dept)
+                            return (
+                              <div key={dept} className={`rounded-xl p-3 ${colors.bg} border border-gray-100`}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                    dept === 'kitchen' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {dept === 'kitchen' ? 'KUCHNIA' : 'SALA'}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {deptShifts[0]?.start_time?.slice(0,5)} &mdash; {deptShifts[0]?.end_time?.slice(0,5)}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {deptShifts.map(sh => {
+                                    const isMe = sh.worker_id === user.id
+                                    return (
+                                      <div key={sh.id} className="flex items-center gap-1">
+                                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                          isMe ? 'bg-green-500 text-white' : 'bg-white/70 text-gray-700'
+                                        }`}>
+                                          {isMe ? `\u2B50 ${sh.worker_name}` : sh.worker_name}
+                                        </span>
+                                        {isAdmin && (
+                                          <button onClick={() => removeShift(sh.id)} className="text-red-300 hover:text-red-500 text-xs">&times;</button>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
-                      {hasMyShift && inMonth && (
-                        <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-green-500" />
+
+                      {/* Add shift (admin) — inline */}
+                      {isAdmin && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          <div className="flex flex-wrap gap-1">
+                            {workers
+                              .filter(w => !dayShifts.some(s => s.worker_id === w.id))
+                              .map(w => (
+                                <button
+                                  key={w.id}
+                                  onClick={() => addShift(w.id, day, w.role === 'kitchen' ? 'kitchen' : 'hall')}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded-lg font-medium ${
+                                    w.role === 'kitchen' ? 'bg-orange-50 text-orange-600 hover:bg-orange-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                  }`}
+                                >
+                                  + {w.full_name.split(' ')[0]}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
                       )}
-                    </button>
+                    </div>
                   )
                 })}
-              </div>
-            </div>
+              </>
+            )}
 
-            {/* Legend */}
-            <div className="flex gap-3 justify-center text-xs text-gray-400">
-              <span><span className="inline-block w-2 h-2 rounded-full bg-orange-400 mr-1" />Kuchnia</span>
-              <span><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Sala</span>
-              <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Twoja zmiana</span>
-            </div>
-
-            {/* Selected day detail */}
-            {selectedDay && (
-              <div className="card border-2 border-brand-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold capitalize">
-                    {format(selectedDay, 'EEEE, d MMMM', { locale: pl })}
-                  </h3>
-                  <button onClick={() => setSelectedDay(null)} className="text-gray-400 text-sm">Zamknij</button>
+            {/* ─── MONTHLY VIEW ──────────────────────────────── */}
+            {calendarView === 'month' && (
+              <>
+                {/* Month nav */}
+                <div className="card flex items-center justify-between">
+                  <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
+                    <span className="text-lg">&laquo;</span>
+                  </button>
+                  <div className="text-center">
+                    <div className="font-bold capitalize">
+                      {format(currentMonth, 'LLLL yyyy', { locale: pl })}
+                    </div>
+                    {!isSameMonth(currentMonth, new Date()) && (
+                      <button onClick={() => setCurrentMonth(startOfMonth(new Date()))} className="text-brand-600 text-xs font-medium">
+                        Dzis
+                      </button>
+                    )}
+                  </div>
+                  <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
+                    <span className="text-lg">&raquo;</span>
+                  </button>
                 </div>
 
-                {shiftsForDay(selectedDay).length === 0 ? (
-                  <p className="text-gray-300 text-sm text-center py-3">Brak zmian</p>
-                ) : (
-                  <div className="space-y-2">
-                    {shiftsForDay(selectedDay).map(sh => {
-                      const colors = deptColor(sh.department)
-                      const isMe = sh.worker_id === user.id
+                {/* Calendar grid */}
+                <div className="card p-2">
+                  <div className="grid grid-cols-7 mb-1">
+                    {DAY_NAMES.map(d => (
+                      <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5">
+                    {calendarDays.map((day, idx) => {
+                      const inMonth = isSameMonth(day, currentMonth)
+                      const today = isTodayFn(day)
+                      const dayShifts = shiftsForDay(day)
+                      const kitchenCount = dayShifts.filter(s => s.department === 'kitchen').length
+                      const hallCount = dayShifts.filter(s => s.department === 'hall').length
+                      const isSelected = selectedDay && isSameDay(day, selectedDay)
+                      const hasMyShift = dayShifts.some(s => s.worker_id === user.id)
+
                       return (
-                        <div key={sh.id} className={`flex items-center justify-between p-2 rounded-lg ${colors.bg} ${isMe ? 'ring-2 ring-green-400' : ''}`}>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${colors.badge}`}>
-                              {sh.department === 'kitchen' ? 'KU' : 'SA'}
-                            </span>
-                            <span className={`text-sm font-medium ${isMe ? 'font-bold' : ''}`}>
-                              {sh.worker_name} {isMe ? '(Ty)' : ''}
-                            </span>
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedDay(isSameDay(day, selectedDay || new Date(0)) ? null : day)}
+                          className={`relative p-1 rounded-lg text-center min-h-[52px] transition-all ${
+                            !inMonth ? 'opacity-30' :
+                            isSelected ? 'bg-brand-100 ring-2 ring-brand-500' :
+                            today ? 'bg-brand-50 ring-1 ring-brand-300' :
+                            hasMyShift ? 'bg-green-50' :
+                            'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className={`text-xs font-bold ${today ? 'text-brand-600' : inMonth ? 'text-gray-700' : 'text-gray-300'}`}>
+                            {format(day, 'd')}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">{sh.start_time?.slice(0,5)} - {sh.end_time?.slice(0,5)}</span>
-                            {isAdmin && (
-                              <button onClick={() => removeShift(sh.id)} className="text-red-400 hover:text-red-600 text-xs">&#10005;</button>
-                            )}
-                          </div>
-                        </div>
+                          {inMonth && dayShifts.length > 0 && (
+                            <div className="flex justify-center gap-0.5 mt-0.5">
+                              {kitchenCount > 0 && (
+                                <span className="text-[8px] bg-orange-400 text-white rounded px-0.5 font-bold">{kitchenCount}K</span>
+                              )}
+                              {hallCount > 0 && (
+                                <span className="text-[8px] bg-blue-400 text-white rounded px-0.5 font-bold">{hallCount}S</span>
+                              )}
+                            </div>
+                          )}
+                          {hasMyShift && inMonth && (
+                            <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-green-500" />
+                          )}
+                        </button>
                       )
                     })}
                   </div>
-                )}
+                </div>
 
-                {/* Add shift (admin) */}
-                {isAdmin && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-2">Dodaj zmiane:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {workers
-                        .filter(w => !shiftsForDay(selectedDay).some(s => s.worker_id === w.id))
-                        .map(w => (
-                          <button
-                            key={w.id}
-                            onClick={() => addShift(w.id, selectedDay, w.role === 'kitchen' ? 'kitchen' : 'hall')}
-                            className={`text-xs px-2 py-1 rounded-lg font-medium ${
-                              w.role === 'kitchen' ? 'bg-orange-50 text-orange-700 hover:bg-orange-100' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                            }`}
-                          >
-                            + {w.full_name}
-                          </button>
-                        ))}
+                {/* Legend */}
+                <div className="flex gap-3 justify-center text-xs text-gray-400">
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-orange-400 mr-1" />Kuchnia</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-1" />Sala</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Twoja zmiana</span>
+                </div>
+
+                {/* Selected day detail */}
+                {selectedDay && (
+                  <div className="card border-2 border-brand-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold capitalize">
+                        {format(selectedDay, 'EEEE, d MMMM', { locale: pl })}
+                      </h3>
+                      <button onClick={() => setSelectedDay(null)} className="text-gray-400 text-sm">Zamknij</button>
                     </div>
+
+                    {shiftsForDay(selectedDay).length === 0 ? (
+                      <p className="text-gray-300 text-sm text-center py-3">Brak zmian</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {shiftsForDay(selectedDay).map(sh => {
+                          const colors = deptColor(sh.department)
+                          const isMe = sh.worker_id === user.id
+                          return (
+                            <div key={sh.id} className={`flex items-center justify-between p-2 rounded-lg ${colors.bg} ${isMe ? 'ring-2 ring-green-400' : ''}`}>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${colors.badge}`}>
+                                  {sh.department === 'kitchen' ? 'KU' : 'SA'}
+                                </span>
+                                <span className={`text-sm font-medium ${isMe ? 'font-bold' : ''}`}>
+                                  {sh.worker_name} {isMe ? '(Ty)' : ''}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">{sh.start_time?.slice(0,5)} - {sh.end_time?.slice(0,5)}</span>
+                                {isAdmin && (
+                                  <button onClick={() => removeShift(sh.id)} className="text-red-400 hover:text-red-600 text-xs">&#10005;</button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Add shift (admin) */}
+                    {isAdmin && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs text-gray-400 mb-2">Dodaj zmiane:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {workers
+                            .filter(w => !shiftsForDay(selectedDay).some(s => s.worker_id === w.id))
+                            .map(w => (
+                              <button
+                                key={w.id}
+                                onClick={() => addShift(w.id, selectedDay, w.role === 'kitchen' ? 'kitchen' : 'hall')}
+                                className={`text-xs px-2 py-1 rounded-lg font-medium ${
+                                  w.role === 'kitchen' ? 'bg-orange-50 text-orange-700 hover:bg-orange-100' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                }`}
+                              >
+                                + {w.full_name}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </>
         )}
@@ -1141,7 +1335,7 @@ export default function SchedulePage() {
                 <div className="font-medium text-purple-700 mb-1">Zgloszenia niedostepnosci:</div>
                 {availabilities.map(a => (
                   <div key={a.id} className="text-purple-600 text-xs">
-                    {workers.find(w => w.id === a.worker_id)?.full_name || '?'}: {a.date_from} \u2014 {a.date_to}
+                    {workers.find(w => w.id === a.worker_id)?.full_name || '?'}: {a.date_from} — {a.date_to}
                     {a.reason ? ` (${a.reason})` : ''}
                     {a.approved ? ' \u2713' : ' \u23F3'}
                   </div>
@@ -1193,7 +1387,7 @@ export default function SchedulePage() {
             <div className="card">
               <h2 className="font-bold text-lg mb-3">Zasady grafiku</h2>
               <p className="text-sm text-gray-500 mb-4">
-                Ustaw kto z kim moze pracowac (prefer) lub kto z kim NIE powinien (avoid). Dziala miedzy WSZYSTKIMI pracownikami \u2014 kuchnia-kuchnia, kuchnia-sala, sala-sala.
+                Ustaw kto z kim moze pracowac (prefer) lub kto z kim NIE powinien (avoid). Dziala miedzy WSZYSTKIMI pracownikami — kuchnia-kuchnia, kuchnia-sala, sala-sala.
               </p>
 
               <div className="space-y-3 bg-gray-50 p-3 rounded-xl">
@@ -1321,7 +1515,7 @@ export default function SchedulePage() {
                         <div>
                           {isAdmin && <div className="text-xs font-bold text-gray-700">{workers.find(w => w.id === a.worker_id)?.full_name}</div>}
                           <div className="text-sm">
-                            {a.date_from} \u2014 {a.date_to}
+                            {a.date_from} — {a.date_to}
                             <span className={`ml-2 text-xs font-bold ${
                               a.availability_type === 'unavailable' ? 'text-red-600' :
                               a.availability_type === 'vacation' ? 'text-blue-600' : 'text-amber-600'
@@ -1355,124 +1549,7 @@ export default function SchedulePage() {
             </div>
           </div>
         )}
-
-        {/* ═══════════════════════════════════════════════════ */}
-        {/* TAB: CLOCK IN/OUT                                   */}
-        {/* ═══════════════════════════════════════════════════ */}
-        {!loadingData && tab === 'clock' && (
-          <div className="space-y-4">
-            {/* My clock today (non-admin) */}
-            {!isAdmin && (
-              <div className="card border-2 border-brand-200">
-                <h2 className="font-bold text-lg mb-3">Obecnosc \u2014 dzis</h2>
-                {myClockToday ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between bg-green-50 p-3 rounded-xl">
-                      <div>
-                        <div className="text-xs text-gray-400">Wejscie</div>
-                        <div className="text-lg font-bold text-green-700">
-                          {myClockToday.clock_in ? format(new Date(myClockToday.clock_in), 'HH:mm') : '\u2014'}
-                        </div>
-                      </div>
-                      {myClockToday.clock_out ? (
-                        <div className="text-right">
-                          <div className="text-xs text-gray-400">Wyjscie</div>
-                          <div className="text-lg font-bold text-red-600">
-                            {format(new Date(myClockToday.clock_out), 'HH:mm')}
-                          </div>
-                        </div>
-                      ) : (
-                        <button onClick={() => handleClockOut()} disabled={saving}
-                          className="px-6 py-3 bg-red-500 text-white rounded-xl font-bold text-sm disabled:opacity-50">
-                          Clock OUT
-                        </button>
-                      )}
-                    </div>
-                    {myClockToday.hours_worked && (
-                      <div className="text-center text-sm text-gray-500">
-                        Przepracowano: <b>{myClockToday.hours_worked.toFixed(1)}h</b>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <button onClick={() => handleClockIn()} disabled={saving}
-                    className="w-full py-4 bg-green-500 text-white rounded-xl font-bold text-lg disabled:opacity-50">
-                    Clock IN
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Admin: clock all workers */}
-            {isAdmin && (
-              <div className="card">
-                <h2 className="font-bold text-lg mb-3">Obecnosc zespolu \u2014 dzis</h2>
-                <div className="space-y-2">
-                  {workers.map(w => {
-                    const cl = clockLogs.find(c => c.worker_id === w.id && c.clock_date === todayStr)
-                    const colors = deptColor(w.role)
-                    return (
-                      <div key={w.id} className={`flex items-center justify-between p-3 rounded-xl ${colors.bg}`}>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${colors.badge}`}>
-                            {w.role === 'kitchen' ? 'KU' : 'SA'}
-                          </span>
-                          <div>
-                            <div className="text-sm font-medium">{w.full_name}</div>
-                            {cl && (
-                              <div className="text-xs text-gray-500">
-                                IN: {cl.clock_in ? format(new Date(cl.clock_in), 'HH:mm') : '\u2014'}
-                                {cl.clock_out ? ` | OUT: ${format(new Date(cl.clock_out), 'HH:mm')} | ${cl.hours_worked?.toFixed(1)}h` : ''}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          {!cl ? (
-                            <button onClick={() => handleClockIn(w.id)} disabled={saving}
-                              className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold disabled:opacity-50">
-                              IN
-                            </button>
-                          ) : !cl.clock_out ? (
-                            <button onClick={() => handleClockOut(w.id)} disabled={saving}
-                              className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-bold disabled:opacity-50">
-                              OUT
-                            </button>
-                          ) : (
-                            <span className="text-xs text-green-600 font-bold px-2">Done</span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Today's clock log summary */}
-            {clockLogs.filter(c => c.clock_date === todayStr).length > 0 && (
-              <div className="card">
-                <h3 className="font-bold text-sm mb-2">Dzisiejsze wpisy</h3>
-                <div className="space-y-1">
-                  {clockLogs.filter(c => c.clock_date === todayStr).map(cl => {
-                    const w = workers.find(w => w.id === cl.worker_id)
-                    return (
-                      <div key={cl.id} className="flex justify-between text-sm text-gray-600">
-                        <span>{w?.full_name || '?'}</span>
-                        <span>
-                          {cl.clock_in ? format(new Date(cl.clock_in), 'HH:mm') : '?'}
-                          {cl.clock_out ? ` \u2014 ${format(new Date(cl.clock_out), 'HH:mm')}` : ' \u2014 ...'}
-                          {cl.hours_worked ? ` (${cl.hours_worked.toFixed(1)}h)` : ''}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
+        {/* (Clock tab removed) */}
         {/* ═══════════════════════════════════════════════════ */}
         {/* TAB: SWAPS                                          */}
         {/* ═══════════════════════════════════════════════════ */}
@@ -1625,7 +1702,7 @@ export default function SchedulePage() {
         {/* ═══════════════════════════════════════════════════ */}
         {/* TAB: STATS                                          */}
         {/* ═══════════════════════════════════════════════════ */}
-        {!loadingData && tab === 'stats' && (
+        {!loadingData && tab === 'stats' && isAdmin && (
           <div className="space-y-4">
             {/* Month nav */}
             <div className="card flex items-center justify-between">
@@ -1638,6 +1715,42 @@ export default function SchedulePage() {
               <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
                 <span className="text-lg">&raquo;</span>
               </button>
+            </div>
+
+            {/* Hourly rate editor */}
+            <div className="card">
+              <h2 className="font-bold text-sm mb-3">Stawki godzinowe (PLN/h)</h2>
+              <div className="space-y-2">
+                {workers.map(w => {
+                  const colors = deptColor(w.role)
+                  return (
+                    <div key={w.id} className={`flex items-center justify-between p-2 rounded-lg ${colors.bg}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${colors.badge}`}>
+                          {w.role === 'kitchen' ? 'KU' : 'SA'}
+                        </span>
+                        <span className="text-sm font-medium">{w.full_name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={hourlyRates[w.id] || ''}
+                          placeholder="0"
+                          onChange={(e) => setHourlyRates(prev => ({ ...prev, [w.id]: parseFloat(e.target.value) || 0 }))}
+                          onBlur={async () => {
+                            const rate = hourlyRates[w.id] || 0
+                            await supabase.from('profiles').update({ hourly_rate: rate }).eq('id', w.id)
+                          }}
+                          className="w-20 p-1.5 border rounded-lg text-sm text-right"
+                        />
+                        <span className="text-xs text-gray-400">zl/h</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Stats table */}
@@ -1654,23 +1767,32 @@ export default function SchedulePage() {
                         <th className="text-center p-2">Dzial</th>
                         <th className="text-center p-2">Zmiany</th>
                         <th className="text-center p-2">Plan h</th>
-                        <th className="text-center p-2 rounded-r-lg">Clock h</th>
+                        <th className="text-center p-2">Clock h</th>
+                        <th className="text-center p-2">zl/h</th>
+                        <th className="text-center p-2 rounded-r-lg">Koszt</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {monthStats.map(st => (
-                        <tr key={st.worker_id} className="border-b border-gray-50">
-                          <td className="p-2 font-medium">{st.worker_name}</td>
-                          <td className="p-2 text-center">
-                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                              st.department === 'Kuchnia' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                            }`}>{st.department}</span>
-                          </td>
-                          <td className="p-2 text-center font-bold">{st.shifts_count}</td>
-                          <td className="p-2 text-center text-gray-500">{st.total_hours.toFixed(0)}h</td>
-                          <td className="p-2 text-center font-bold text-brand-600">{st.clocked_hours > 0 ? st.clocked_hours.toFixed(1) + 'h' : '\u2014'}</td>
-                        </tr>
-                      ))}
+                      {monthStats.map(st => {
+                        const cost = st.hourly_rate > 0
+                          ? (st.clocked_hours > 0 ? st.clocked_hours : st.total_hours) * st.hourly_rate
+                          : 0
+                        return (
+                          <tr key={st.worker_id} className="border-b border-gray-50">
+                            <td className="p-2 font-medium">{st.worker_name}</td>
+                            <td className="p-2 text-center">
+                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                                st.department === 'Kuchnia' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                              }`}>{st.department}</span>
+                            </td>
+                            <td className="p-2 text-center font-bold">{st.shifts_count}</td>
+                            <td className="p-2 text-center text-gray-500">{st.total_hours.toFixed(0)}h</td>
+                            <td className="p-2 text-center font-bold text-brand-600">{st.clocked_hours > 0 ? st.clocked_hours.toFixed(1) + 'h' : '—'}</td>
+                            <td className="p-2 text-center text-gray-400">{st.hourly_rate > 0 ? st.hourly_rate.toFixed(0) : '—'}</td>
+                            <td className="p-2 text-center font-bold text-green-600">{cost > 0 ? cost.toFixed(0) + ' zl' : '—'}</td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1679,7 +1801,7 @@ export default function SchedulePage() {
 
             {/* Summary */}
             {monthStats.length > 0 && (
-              <div className="card grid grid-cols-3 gap-3 text-center">
+              <div className="card grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div>
                   <div className="text-2xl font-bold text-brand-500">
                     {monthStats.reduce((s, m) => s + m.shifts_count, 0)}
@@ -1697,6 +1819,15 @@ export default function SchedulePage() {
                     {monthStats.reduce((s, m) => s + m.clocked_hours, 0).toFixed(1)}h
                   </div>
                   <div className="text-xs text-gray-400">Zarejestrowane</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-amber-600">
+                    {monthStats.reduce((s, m) => {
+                      const h = m.clocked_hours > 0 ? m.clocked_hours : m.total_hours
+                      return s + (m.hourly_rate > 0 ? h * m.hourly_rate : 0)
+                    }, 0).toFixed(0)} zl
+                  </div>
+                  <div className="text-xs text-gray-400">Koszt razem</div>
                 </div>
               </div>
             )}
