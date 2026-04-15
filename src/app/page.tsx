@@ -14,7 +14,7 @@ export default function Dashboard() {
   const [pendingTasks, setPendingTasks] = useState(0)
   const [starCount, setStarCount] = useState(0)
   const [todayShifts, setTodayShifts] = useState<{ worker_name: string; department: string; start_time: string; end_time: string; worker_id: string }[]>([])
-  const [todayClock, setTodayClock] = useState<{ worker_id: string; clock_in: string | null; clock_out: string | null }[]>([])
+  const [todayClock, setTodayClock] = useState<{ worker_id: string; clock_in: string | null; clock_out: string | null; breaks?: { start: string; end: string | null }[] }[]>([])
   const [minKitchen, setMinKitchen] = useState(2)
   const [minHall, setMinHall] = useState(1)
   const [pendingSwaps, setPendingSwaps] = useState(0)
@@ -70,10 +70,10 @@ export default function Dashboard() {
         setTodayShifts(enriched)
       }
 
-      // Today's clock logs
+      // Today's clock logs (+ breaks)
       const { data: clockData } = await supabase
         .from('clock_logs')
-        .select('worker_id, clock_in, clock_out')
+        .select('worker_id, clock_in, clock_out, breaks')
         .eq('location_id', user!.location_id)
         .eq('clock_date', todayStr)
 
@@ -272,6 +272,17 @@ export default function Dashboard() {
         )}
 
         {/* (readiness report removed — use Sanepid module) */}
+
+        {/* ─── Clock IN/OUT widget (kontekstowy) ─────────── */}
+        <ClockWidget user={user} todayShifts={todayShifts} todayClock={todayClock} onUpdate={() => {
+          // Reload today clock logs
+          const todayStr = format(new Date(), 'yyyy-MM-dd')
+          supabase.from('clock_logs')
+            .select('worker_id, clock_in, clock_out, breaks')
+            .eq('location_id', user.location_id)
+            .eq('clock_date', todayStr)
+            .then(({ data }) => { if (data) setTodayClock(data) })
+        }} />
 
         {/* ─── Today's Shift Widget (always for admin, hides after clock-in for workers) */}
         {todayShifts.length > 0 && (isAdmin || !todayClock.find(c => c.worker_id === user.id)) && (
@@ -492,4 +503,286 @@ export default function Dashboard() {
       </div>
     </div>
   )
+}
+
+// ─── Clock Widget Component ──────────────────────────────────
+// Break limits based on Polish labor law (adapted for restaurant shifts):
+// <6h → 0 min (not mandatory), 6-8h → 15 min, 8-12h → 30 min, 12h+ → 45 min
+function calcBreakLimit(shiftHours: number): number {
+  if (shiftHours < 6) return 0
+  if (shiftHours < 8) return 15
+  if (shiftHours < 12) return 30
+  return 45
+}
+
+function sumBreakMinutes(breaks: { start: string; end: string | null }[], now: Date): number {
+  let total = 0
+  for (const b of breaks) {
+    const start = new Date(b.start).getTime()
+    const end = b.end ? new Date(b.end).getTime() : now.getTime()
+    total += (end - start) / 60000
+  }
+  return Math.round(total)
+}
+
+function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
+  user: any
+  todayShifts: { worker_id: string; start_time: string; end_time: string; department: string; worker_name: string }[]
+  todayClock: { worker_id: string; clock_in: string | null; clock_out: string | null; breaks?: { start: string; end: string | null }[] }[]
+  onUpdate: () => void
+}) {
+  const [now, setNow] = useState(new Date())
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000 * 30)
+    return () => clearInterval(t)
+  }, [])
+
+  const myShift = todayShifts.find(s => s.worker_id === user.id)
+  const myClock = todayClock.find(c => c.worker_id === user.id)
+
+  if (!myShift) return null
+
+  const todayStr = format(now, 'yyyy-MM-dd')
+  const [sh, sm] = myShift.start_time.split(':').map(Number)
+  const [eh, em] = myShift.end_time.split(':').map(Number)
+  const shiftStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm)
+  const shiftEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), eh, em)
+  const msToStart = shiftStart.getTime() - now.getTime()
+  const msToEnd = shiftEnd.getTime() - now.getTime()
+
+  // Show Clock IN: 1h before shift start, not yet clocked in
+  const showClockIn = !myClock?.clock_in && msToStart < 60 * 60 * 1000 && msToEnd > 0
+
+  // Show Clock OUT: clocked in but not out, anytime during shift or after
+  const showClockOut = myClock?.clock_in && !myClock?.clock_out
+
+  async function handleClockIn() {
+    setSaving(true)
+    const { error } = await supabase.from('clock_logs').upsert({
+      worker_id: user.id,
+      location_id: user.location_id,
+      clock_date: todayStr,
+      clock_in: new Date().toISOString(),
+      clock_out: null,
+      clocked_by: user.id,
+    }, { onConflict: 'worker_id,clock_date' })
+    if (error) alert('Blad: ' + error.message)
+    setSaving(false)
+    onUpdate()
+  }
+
+  async function handleClockOut() {
+    if (!myClock || !myClock.clock_in) return
+    setSaving(true)
+    const clockIn = new Date(myClock.clock_in)
+    const clockOut = new Date()
+    const hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60)
+
+    const { error } = await supabase.from('clock_logs').update({
+      clock_out: clockOut.toISOString(),
+      hours_worked: hours,
+      clocked_by: user.id,
+    }).eq('worker_id', user.id).eq('clock_date', todayStr)
+    if (error) alert('Blad: ' + error.message)
+    setSaving(false)
+    onUpdate()
+  }
+
+  function fmtCountdown(ms: number) {
+    if (ms < 0) return '0:00'
+    const totalMin = Math.floor(ms / 60000)
+    const h = Math.floor(totalMin / 60)
+    const m = totalMin % 60
+    return `${h}h ${m}m`
+  }
+
+  // Not clocked in yet + within 1h window → show big green button
+  if (showClockIn) {
+    return (
+      <div className="rounded-2xl bg-white border-2 border-green-200 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs text-gray-400 font-medium">Twoja zmiana</div>
+            <div className="text-sm font-bold text-gray-900">
+              {myShift.start_time.slice(0,5)} — {myShift.end_time.slice(0,5)}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400">Start za</div>
+            <div className="text-sm font-bold text-green-600">
+              {msToStart > 0 ? fmtCountdown(msToStart) : 'TERAZ'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={handleClockIn}
+          disabled={saving}
+          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl text-lg shadow-lg active:scale-98 disabled:opacity-50"
+        >
+          {saving ? '...' : '🟢 CLOCK IN'}
+        </button>
+      </div>
+    )
+  }
+
+  // Currently working → show elapsed + Break + Clock OUT
+  if (showClockOut && myClock?.clock_in) {
+    const clockInTime = new Date(myClock.clock_in)
+    const elapsed = now.getTime() - clockInTime.getTime()
+    const showOutSoon = msToEnd < 30 * 60 * 1000
+
+    const breaks = myClock.breaks || []
+    const activeBreak = breaks.find(b => !b.end)
+    const onBreak = !!activeBreak
+    const shiftHours = (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60)
+    const breakLimit = calcBreakLimit(shiftHours)
+    const usedMinutes = sumBreakMinutes(breaks, now)
+    const overLimit = breakLimit > 0 && usedMinutes > breakLimit
+
+    const handleBreakToggle = async () => {
+      if (!myClock) return
+      setSaving(true)
+      const currentBreaks = [...(myClock.breaks || [])]
+      if (onBreak) {
+        // End active break
+        const idx = currentBreaks.findIndex(b => !b.end)
+        if (idx >= 0) currentBreaks[idx] = { ...currentBreaks[idx], end: new Date().toISOString() }
+      } else {
+        // Start new break
+        currentBreaks.push({ start: new Date().toISOString(), end: null })
+      }
+      const totalMin = sumBreakMinutes(currentBreaks, new Date())
+      const { error } = await supabase.from('clock_logs').update({
+        breaks: currentBreaks,
+        total_break_minutes: totalMin,
+      }).eq('worker_id', user.id).eq('clock_date', todayStr)
+      if (error) alert('Blad: ' + error.message)
+      setSaving(false)
+      onUpdate()
+    }
+
+    // ═════ ON BREAK VIEW ═════
+    if (onBreak && activeBreak) {
+      const breakStart = new Date(activeBreak.start)
+      const breakElapsed = Math.floor((now.getTime() - breakStart.getTime()) / 60000)
+      return (
+        <div className="rounded-2xl bg-white border-2 border-orange-300 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-orange-500 font-medium flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" /> NA PRZERWIE
+              </div>
+              <div className="text-sm font-bold text-gray-900">
+                Od {breakStart.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-gray-400">Przerwa</div>
+              <div className={`text-lg font-bold ${overLimit ? 'text-red-600' : 'text-orange-600'}`}>
+                {breakElapsed}m{breakLimit > 0 ? ` / ${breakLimit}m` : ''}
+              </div>
+            </div>
+          </div>
+          {overLimit && (
+            <p className="text-[10px] text-red-500 text-center font-medium">
+              ⚠️ Przekroczony limit przerwy ({breakLimit}min wg przepisow dla {shiftHours.toFixed(0)}h zmiany)
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleBreakToggle}
+              disabled={saving}
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+            >
+              {saving ? '...' : '✅ KONIEC PRZERWY'}
+            </button>
+            <button
+              onClick={handleClockOut}
+              disabled={saving}
+              className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+            >
+              🔴 CLOCK OUT
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // ═════ WORKING VIEW ═════
+    return (
+      <div className={`rounded-2xl bg-white border-2 p-4 space-y-3 ${showOutSoon ? 'border-red-300' : 'border-green-300'}`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs text-gray-400 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> W pracy
+            </div>
+            <div className="text-sm font-bold text-gray-900">
+              Od {clockInTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-gray-400">Przepracowane</div>
+            <div className="text-lg font-bold text-green-600">{fmtCountdown(elapsed)}</div>
+          </div>
+        </div>
+
+        {breakLimit > 0 && usedMinutes > 0 && (
+          <div className="flex items-center justify-between bg-orange-50 rounded-xl px-3 py-1.5">
+            <span className="text-[10px] text-orange-600 font-medium">☕ Wykorzystana przerwa</span>
+            <span className={`text-xs font-bold ${overLimit ? 'text-red-600' : 'text-orange-700'}`}>
+              {usedMinutes}m / {breakLimit}m
+            </span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={handleBreakToggle}
+            disabled={saving || overLimit}
+            className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+          >
+            {saving ? '...' : '☕ PRZERWA'}
+          </button>
+          <button
+            onClick={handleClockOut}
+            disabled={saving}
+            className={`text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50 ${
+              showOutSoon ? 'bg-red-500 hover:bg-red-600 animate-pulse-slow' : 'bg-gray-700 hover:bg-gray-800'
+            }`}
+          >
+            🔴 CLOCK OUT
+          </button>
+        </div>
+
+        {showOutSoon && (
+          <p className="text-[10px] text-red-500 text-center font-medium">
+            Zmiana konczy sie za {fmtCountdown(msToEnd)}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // Already clocked out → show summary
+  if (myClock?.clock_in && myClock?.clock_out) {
+    const inTime = new Date(myClock.clock_in)
+    const outTime = new Date(myClock.clock_out)
+    const hours = (outTime.getTime() - inTime.getTime()) / (1000 * 60 * 60)
+    return (
+      <div className="rounded-2xl bg-gray-50 border-2 border-gray-200 p-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-500">
+            ✅ Dzisiaj przepracowane: <span className="font-bold text-gray-800">{hours.toFixed(1)}h</span>
+          </div>
+          <div className="text-[10px] text-gray-400">
+            {inTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} — {outTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return null
 }

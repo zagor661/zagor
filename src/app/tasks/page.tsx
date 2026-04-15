@@ -17,6 +17,7 @@ interface WorkerTask {
   created_by_name?: string
   due_date: string | null
   is_completed: boolean
+  is_private: boolean
   status: TaskStatus
   acknowledged_at: string | null
   started_at: string | null
@@ -58,8 +59,14 @@ export default function TasksPage() {
   const [newDesc, setNewDesc] = useState('')
   const [newAssign, setNewAssign] = useState('')
   const [newDate, setNewDate] = useState('')
+  const [newPrivate, setNewPrivate] = useState(false)
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<'mine' | 'created' | 'all'>('mine')
+
+  // Private message (admin-only shortcut) state
+  const [showPrivateMsg, setShowPrivateMsg] = useState(false)
+  const [pmAssign, setPmAssign] = useState('')
+  const [pmText, setPmText] = useState('')
 
   // Chat state
   const [openChatId, setOpenChatId] = useState<string | null>(null)
@@ -97,6 +104,9 @@ export default function TasksPage() {
       query = query.eq('assigned_to', user!.id)
     } else if (filter === 'created') {
       query = query.eq('created_by', user!.id)
+    } else if (filter === 'all' && !isAdmin) {
+      // Zwykły pracownik w "Wszystkie": ukryj tajne, chyba że jest przypisanym albo autorem
+      query = query.or(`is_private.eq.false,assigned_to.eq.${user!.id},created_by.eq.${user!.id}`)
     }
 
     const { data } = await query
@@ -266,6 +276,7 @@ export default function TasksPage() {
       created_by: user.id,
       due_date: newDate || null,
       status: 'new',
+      is_private: newPrivate,
     })
 
     if (error) { alert('Błąd: ' + error.message); setSaving(false); return }
@@ -274,7 +285,29 @@ export default function TasksPage() {
     setNewDesc('')
     setNewAssign('')
     setNewDate('')
+    setNewPrivate(false)
     setShowForm(false)
+    setSaving(false)
+    loadTasks()
+  }
+
+  // ─── Private message (admin-only shortcut) ─────────────────
+  async function sendPrivateMessage() {
+    if (!pmAssign || !pmText.trim() || !user) return
+    setSaving(true)
+    const { error } = await supabase.from('worker_tasks').insert({
+      location_id: user.location_id,
+      title: 'Proszę o odpowiedź',
+      description: pmText.trim(),
+      assigned_to: pmAssign,
+      created_by: user.id,
+      status: 'new',
+      is_private: true,
+    })
+    if (error) { alert('Błąd: ' + error.message); setSaving(false); return }
+    setPmAssign('')
+    setPmText('')
+    setShowPrivateMsg(false)
     setSaving(false)
     loadTasks()
   }
@@ -346,12 +379,23 @@ export default function TasksPage() {
             <button onClick={() => router.push('/')} className="text-brand-600 text-sm font-medium">← Powrót</button>
             <h1 className="text-xl font-bold mt-1">📋 Zadania</h1>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-brand-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-brand-600"
-          >
-            + Dodaj
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => setShowPrivateMsg(true)}
+                className="bg-purple-500 text-white px-3 py-2 rounded-xl text-xs font-bold hover:bg-purple-600"
+                title="Prywatna wiadomość — tajne zadanie 'Proszę o odpowiedź'"
+              >
+                ✉️ Private
+              </button>
+            )}
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="bg-brand-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-brand-600"
+            >
+              + Dodaj
+            </button>
+          </div>
         </div>
 
         {/* Filter tabs */}
@@ -413,11 +457,66 @@ export default function TasksPage() {
               className="input"
               placeholder="Termin"
             />
+            <label className="flex items-center gap-2 cursor-pointer select-none px-2 py-2 rounded-lg hover:bg-purple-50">
+              <input
+                type="checkbox"
+                checked={newPrivate}
+                onChange={e => setNewPrivate(e.target.checked)}
+                className="w-4 h-4 accent-purple-500"
+              />
+              <span className="text-xs font-medium text-gray-700">
+                🔒 Tajne zadanie (secret) — widoczne tylko dla: przypisany, autor, Menager, Właściciel
+              </span>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setShowForm(false)} className="btn-white text-sm py-3">Anuluj</button>
               <button onClick={addTask} disabled={saving || !newTitle.trim()} className="btn-orange text-sm py-3">
                 {saving ? '...' : 'Dodaj zadanie'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Private message modal (admin-only) */}
+        {showPrivateMsg && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg p-4 space-y-3 animate-slide-up">
+              <h3 className="text-sm font-bold text-purple-700 flex items-center gap-2">
+                ✉️ Prywatna wiadomość — „Proszę o odpowiedź"
+              </h3>
+              <p className="text-[11px] text-gray-500">
+                Tajne zadanie, widoczne tylko dla adresata i kierownictwa. Odpowiedź przyjdzie do chata w zadaniu.
+              </p>
+              <select
+                value={pmAssign}
+                onChange={e => setPmAssign(e.target.value)}
+                className="input"
+              >
+                <option value="">Do kogo? (wybierz pracownika)</option>
+                {workers.map(w => (
+                  <option key={w.id} value={w.id}>{w.full_name}</option>
+                ))}
+              </select>
+              <textarea
+                value={pmText}
+                onChange={e => setPmText(e.target.value)}
+                placeholder="Treść wiadomości..."
+                className="input"
+                rows={4}
+                autoFocus
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => { setShowPrivateMsg(false); setPmAssign(''); setPmText('') }} className="btn-white text-sm py-3">
+                  Anuluj
+                </button>
+                <button
+                  onClick={sendPrivateMessage}
+                  disabled={saving || !pmAssign || !pmText.trim()}
+                  className="bg-purple-500 text-white rounded-xl text-sm font-bold py-3 hover:bg-purple-600 disabled:opacity-50"
+                >
+                  {saving ? '...' : '✉️ Wyślij'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -541,9 +640,16 @@ export default function TasksPage() {
                 }`}>
                   {/* Status badge */}
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.bg} ${sc.color}`}>
-                      {sc.icon} {sc.label}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.bg} ${sc.color}`}>
+                        {sc.icon} {sc.label}
+                      </span>
+                      {task.is_private && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700" title="Tajne — widoczne tylko dla przypisanego, autora, Menagera i Właściciela">
+                          🔒 Tajne
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-gray-400">{timeAgo(task.created_at)}</span>
                   </div>
 
