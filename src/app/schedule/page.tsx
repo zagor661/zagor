@@ -63,6 +63,11 @@ interface Constraint {
   reason: string | null
 }
 
+interface BreakEntry {
+  start: string
+  end: string | null
+}
+
 interface ClockLog {
   id: string
   worker_id: string
@@ -71,6 +76,8 @@ interface ClockLog {
   clock_out: string | null
   hours_worked: number | null
   clocked_by: string | null
+  breaks?: BreakEntry[]
+  total_break_minutes?: number
 }
 
 interface MonthStats {
@@ -80,6 +87,7 @@ interface MonthStats {
   shifts_count: number
   total_hours: number
   clocked_hours: number
+  break_minutes: number
   hourly_rate: number
 }
 
@@ -106,7 +114,7 @@ interface SwapRequest {
 }
 
 // ─── Tabs ───────────────────────────────────────────────────
-type TabType = 'calendar' | 'generate' | 'constraints' | 'stats' | 'availability' | 'swaps'
+type TabType = 'calendar' | 'generate' | 'constraints' | 'stats' | 'availability' | 'swaps' | 'attendance'
 
 // ─── Helper: hours between two TIME strings ─────────────────
 function hoursBetween(start: string, end: string): number {
@@ -172,6 +180,9 @@ export default function SchedulePage() {
 
   // Hourly rates state (worker_id -> PLN/h)
   const [hourlyRates, setHourlyRates] = useState<Record<string, number>>({})
+
+  // Attendance filter
+  const [attendanceWorker, setAttendanceWorker] = useState<string>('')
 
   // Swap state
   const [swapMyShiftId, setSwapMyShiftId] = useState('')
@@ -364,6 +375,7 @@ export default function SchedulePage() {
         shifts_count: 0,
         total_hours: 0,
         clocked_hours: 0,
+        break_minutes: 0,
         hourly_rate: hourlyRates[w.id] || 0,
       })
     })
@@ -378,6 +390,9 @@ export default function SchedulePage() {
       const stat = statsMap.get(cl.worker_id)
       if (stat && cl.hours_worked) {
         stat.clocked_hours += cl.hours_worked
+      }
+      if (stat && cl.total_break_minutes) {
+        stat.break_minutes += cl.total_break_minutes
       }
     })
     return Array.from(statsMap.values()).sort((a, b) => a.department.localeCompare(b.department))
@@ -866,12 +881,14 @@ export default function SchedulePage() {
         ['constraints' as TabType, 'Zasady'],
         ['availability' as TabType, 'Dostepnosc'],
         ['swaps' as TabType, `Zamiany${pendingSwapsForMe.length + pendingSwapsForAdmin.length > 0 ? ` (${pendingSwapsForMe.length + pendingSwapsForAdmin.length})` : ''}`],
+        ['attendance' as TabType, 'Obecnosc'],
         ['stats' as TabType, 'Statystyki'],
       ]
     : [
         ['calendar' as TabType, 'Kalendarz'],
         ['availability' as TabType, 'Dostepnosc'],
         ['swaps' as TabType, `Zamiany${pendingSwapsForMe.length > 0 ? ` (${pendingSwapsForMe.length})` : ''}`],
+        ['attendance' as TabType, 'Moja obecnosc'],
       ]
 
   return (
@@ -1700,6 +1717,197 @@ export default function SchedulePage() {
         )}
 
         {/* ═══════════════════════════════════════════════════ */}
+        {/* TAB: ATTENDANCE (historia obecnosci + przerw)       */}
+        {/* ═══════════════════════════════════════════════════ */}
+        {!loadingData && tab === 'attendance' && (() => {
+          // Admin widzi wszystkich (z filtrem), pracownik tylko siebie
+          const selectedWorkerId = isAdmin ? (attendanceWorker || user.id) : user.id
+          const selectedWorker = workers.find(w => w.id === selectedWorkerId)
+
+          // Clock logi dla wybranej osoby w biezacym miesiacu
+          const workerLogs = clockLogs
+            .filter(cl => cl.worker_id === selectedWorkerId)
+            .sort((a, b) => b.clock_date.localeCompare(a.clock_date))
+
+          // Sumy miesieczne
+          const totalWorked = workerLogs.reduce((s, cl) => s + (cl.hours_worked || 0), 0)
+          const totalBreakMin = workerLogs.reduce((s, cl) => s + (cl.total_break_minutes || 0), 0)
+          const daysWorked = workerLogs.filter(cl => cl.clock_in).length
+
+          // Helper: limit przerwy wg PL prawa pracy
+          const allowedBreakMin = (hours: number): number => {
+            if (hours < 6) return 0
+            if (hours < 8) return 15
+            if (hours < 12) return 30
+            return 45
+          }
+
+          // Kolor pracownika
+          const wColors = selectedWorker ? deptColor(selectedWorker.role) : { bg: 'bg-gray-50', text: 'text-gray-500', badge: 'bg-gray-400' }
+
+          return (
+            <div className="space-y-4">
+              {/* Month nav */}
+              <div className="card flex items-center justify-between">
+                <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
+                  <span className="text-lg">&laquo;</span>
+                </button>
+                <div className="font-bold capitalize text-center">
+                  {format(currentMonth, 'LLLL yyyy', { locale: pl })}
+                </div>
+                <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 rounded-xl hover:bg-gray-100">
+                  <span className="text-lg">&raquo;</span>
+                </button>
+              </div>
+
+              {/* Worker picker — tylko admin */}
+              {isAdmin && (
+                <div className="card">
+                  <label className="text-xs font-medium text-gray-600">Pracownik</label>
+                  <select
+                    value={attendanceWorker || user.id}
+                    onChange={e => setAttendanceWorker(e.target.value)}
+                    className="w-full p-2 border rounded-lg text-sm mt-1"
+                  >
+                    {workers.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.full_name} ({w.role === 'kitchen' ? 'Kuchnia' : 'Sala'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Summary */}
+              <div className={`card ${wColors.bg} border-2 border-gray-100`}>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{daysWorked}</div>
+                    <div className="text-[10px] text-gray-500 uppercase font-semibold">Dni</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-brand-600">{totalWorked.toFixed(1)}h</div>
+                    <div className="text-[10px] text-gray-500 uppercase font-semibold">Przepracowane</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-amber-600">{totalBreakMin}m</div>
+                    <div className="text-[10px] text-gray-500 uppercase font-semibold">Przerwy</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* List of days */}
+              <div className="card">
+                <h3 className="font-bold text-sm mb-3">
+                  Historia {isAdmin && selectedWorker ? `— ${selectedWorker.full_name}` : ''}
+                </h3>
+                {workerLogs.length === 0 ? (
+                  <p className="text-gray-300 text-sm text-center py-6">Brak zarejestrowanych dni w tym miesiacu</p>
+                ) : (
+                  <div className="space-y-3">
+                    {workerLogs.map(cl => {
+                      const dateObj = parseISO(cl.clock_date)
+                      const inStr = cl.clock_in ? format(parseISO(cl.clock_in), 'HH:mm') : '—'
+                      const outStr = cl.clock_out ? format(parseISO(cl.clock_out), 'HH:mm') : '—'
+                      const hours = cl.hours_worked || 0
+                      const breakMin = cl.total_break_minutes || 0
+                      const allowedMin = allowedBreakMin(hours)
+                      const breaks = Array.isArray(cl.breaks) ? cl.breaks : []
+                      const isOverBreak = breakMin > allowedMin && allowedMin > 0
+                      const isOpen = cl.clock_in && !cl.clock_out
+
+                      // Planned shift for the day
+                      const plannedShift = shifts.find(s =>
+                        s.worker_id === cl.worker_id && s.shift_date === cl.clock_date
+                      )
+
+                      return (
+                        <div key={cl.id} className="border border-gray-100 rounded-xl p-3 bg-white">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <span className="font-bold text-sm capitalize">
+                                {format(dateObj, 'EEEE', { locale: pl })}
+                              </span>
+                              <span className="text-gray-400 text-xs ml-2">
+                                {format(dateObj, 'd MMM', { locale: pl })}
+                              </span>
+                            </div>
+                            {isOpen && (
+                              <span className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                                W TRAKCIE
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                            <div className="bg-green-50 rounded-lg p-2">
+                              <div className="text-[10px] text-green-700 font-semibold uppercase">Clock IN</div>
+                              <div className="font-bold text-sm text-green-800">{inStr}</div>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-2">
+                              <div className="text-[10px] text-red-700 font-semibold uppercase">Clock OUT</div>
+                              <div className="font-bold text-sm text-red-800">{outStr}</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase">Godziny</div>
+                              <div className="font-bold text-brand-600">{hours > 0 ? hours.toFixed(1) + 'h' : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase">Przerwa</div>
+                              <div className={`font-bold ${isOverBreak ? 'text-red-600' : 'text-amber-600'}`}>
+                                {breakMin}m {allowedMin > 0 && <span className="text-gray-300 font-normal">/ {allowedMin}m</span>}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-gray-400 uppercase">Plan</div>
+                              <div className="font-bold text-gray-600">
+                                {plannedShift ? `${plannedShift.start_time?.slice(0,5)}-${plannedShift.end_time?.slice(0,5)}` : '—'}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Breaks breakdown */}
+                          {breaks.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-gray-100">
+                              <div className="text-[10px] text-gray-400 uppercase font-semibold mb-1">
+                                Przerwy ({breaks.length})
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {breaks.map((b, idx) => {
+                                  const bStart = format(parseISO(b.start), 'HH:mm')
+                                  const bEnd = b.end ? format(parseISO(b.end), 'HH:mm') : '…'
+                                  const durMin = b.end
+                                    ? Math.round((new Date(b.end).getTime() - new Date(b.start).getTime()) / 60000)
+                                    : null
+                                  return (
+                                    <span key={idx} className="text-[11px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                                      {bStart}-{bEnd}{durMin !== null ? ` (${durMin}m)` : ' trwa'}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {isOverBreak && (
+                            <div className="mt-2 text-[11px] bg-red-50 text-red-700 px-2 py-1 rounded-lg font-medium">
+                              Przekroczono limit przerwy ({breakMin}m &gt; {allowedMin}m)
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ═══════════════════════════════════════════════════ */}
         {/* TAB: STATS                                          */}
         {/* ═══════════════════════════════════════════════════ */}
         {!loadingData && tab === 'stats' && isAdmin && (
@@ -1768,6 +1976,7 @@ export default function SchedulePage() {
                         <th className="text-center p-2">Zmiany</th>
                         <th className="text-center p-2">Plan h</th>
                         <th className="text-center p-2">Clock h</th>
+                        <th className="text-center p-2">Przerwa</th>
                         <th className="text-center p-2">zl/h</th>
                         <th className="text-center p-2 rounded-r-lg">Koszt</th>
                       </tr>
@@ -1788,6 +1997,7 @@ export default function SchedulePage() {
                             <td className="p-2 text-center font-bold">{st.shifts_count}</td>
                             <td className="p-2 text-center text-gray-500">{st.total_hours.toFixed(0)}h</td>
                             <td className="p-2 text-center font-bold text-brand-600">{st.clocked_hours > 0 ? st.clocked_hours.toFixed(1) + 'h' : '—'}</td>
+                            <td className="p-2 text-center text-amber-600 font-medium">{st.break_minutes > 0 ? st.break_minutes + 'm' : '—'}</td>
                             <td className="p-2 text-center text-gray-400">{st.hourly_rate > 0 ? st.hourly_rate.toFixed(0) : '—'}</td>
                             <td className="p-2 text-center font-bold text-green-600">{cost > 0 ? cost.toFixed(0) + ' zl' : '—'}</td>
                           </tr>
