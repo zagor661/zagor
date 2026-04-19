@@ -1,58 +1,27 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole, normalizeRole } from '@/lib/roles'
-import supabase from '@/lib/supabase'
+import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
 
 // ─── Types ──────────────────────────────────────────────────
-interface Ingredient {
-  id: string
-  name: string
-  unit: string
-  price_per_unit: number
-  supplier: string | null
-  category: string
-  is_active: boolean
+interface RecipeLine {
+  productName: string
+  pricePerKg: number
+  quantity: number // in kg
 }
 
 interface Recipe {
   id: string
   name: string
   category: string
-  brand: string
+  sellingPrice: number
   portions: number
-  selling_price: number | null
-  notes: string | null
-  is_active: boolean
+  lines: RecipeLine[]
 }
 
-interface RecipeIngredient {
-  id: string
-  recipe_id: string
-  ingredient_id: string
-  quantity: number
-  unit: string
-  notes: string | null
-  ingredient_name?: string
-  ingredient_price?: number
-  ingredient_unit?: string
-}
-
-type TabType = 'recipes' | 'ingredients' | 'add-recipe' | 'add-ingredient'
-
-const CATEGORIES = [
-  { value: 'warzywa', label: '🥬 Warzywa' },
-  { value: 'mieso', label: '🍗 Mięso' },
-  { value: 'nabial', label: '🧀 Nabiał' },
-  { value: 'suche', label: '🌾 Suche / sypkie' },
-  { value: 'sosy', label: '🫙 Sosy / przyprawy' },
-  { value: 'makarony', label: '🍜 Makarony / ryż' },
-  { value: 'owoce_morza', label: '🦐 Owoce morza' },
-  { value: 'napoje', label: '🥤 Napoje' },
-  { value: 'opakowania', label: '📦 Opakowania' },
-  { value: 'inne', label: '📎 Inne' },
-]
+type TabType = 'recipes' | 'ingredients' | 'add-recipe'
 
 const RECIPE_CATEGORIES = [
   { value: 'main', label: 'Danie główne' },
@@ -63,172 +32,108 @@ const RECIPE_CATEGORIES = [
   { value: 'dessert', label: 'Deser' },
 ]
 
-const UNITS = ['kg', 'g', 'l', 'ml', 'szt', 'opak']
+// Get only ingredients (not dishes) from foodcost
+const INGREDIENTS = FOODCOST_PRODUCTS.filter(p => p.type === 'ingredient')
+const CATEGORY_ORDER = ['Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie', 'Przyprawy', 'Inne', 'Opakowania']
+
+// LocalStorage key for recipes
+const RECIPES_KEY = 'kitchenops_recipes'
+
+function loadRecipes(): Recipe[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(RECIPES_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveRecipes(recipes: Recipe[]) {
+  localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes))
+}
 
 // ─── Component ──────────────────────────────────────────────
 export default function FoodCostPage() {
   const { user, loading } = useUser()
   const canAccess = user ? (isAdminRole(user.role) || normalizeRole(user.role) === 'kitchen') : false
 
-  const [tab, setTab] = useState<TabType>('recipes')
-  const [ingredients, setIngredients] = useState<Ingredient[]>([])
-  const [recipes, setRecipes] = useState<Recipe[]>([])
-  const [recipeIngredients, setRecipeIngredients] = useState<Record<string, RecipeIngredient[]>>({})
-  const [loadingData, setLoadingData] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [tab, setTab] = useState<TabType>('ingredients')
+  const [recipes, setRecipes] = useState<Recipe[]>(loadRecipes)
 
-  // New ingredient form
-  const [ingName, setIngName] = useState('')
-  const [ingUnit, setIngUnit] = useState('kg')
-  const [ingPrice, setIngPrice] = useState('')
-  const [ingSupplier, setIngSupplier] = useState('')
-  const [ingCategory, setIngCategory] = useState('inne')
+  // Search
+  const [searchIng, setSearchIng] = useState('')
+  const [searchRec, setSearchRec] = useState('')
 
   // New recipe form
   const [recName, setRecName] = useState('')
   const [recCategory, setRecCategory] = useState('main')
   const [recPortions, setRecPortions] = useState('1')
   const [recPrice, setRecPrice] = useState('')
-  const [recNotes, setRecNotes] = useState('')
-  const [recLines, setRecLines] = useState<{ ingredient_id: string; quantity: string; unit: string }[]>([])
+  const [recLines, setRecLines] = useState<{ name: string; quantity: string }[]>([])
+  const [lineQuery, setLineQuery] = useState('')
+  const [activeLineIdx, setActiveLineIdx] = useState<number | null>(null)
 
   // Detail view
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null)
 
-  // Search
-  const [searchIng, setSearchIng] = useState('')
-  const [searchRec, setSearchRec] = useState('')
+  // ─── Filtered ingredients ──────────────────────────────
+  const filteredIngredients = useMemo(() => {
+    const q = searchIng.toLowerCase()
+    return INGREDIENTS.filter(p =>
+      p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+    )
+  }, [searchIng])
 
-  // ─── Load data ──────────────────────────────────────────
-  const loadData = useCallback(async () => {
-    setLoadingData(true)
-    const { data: ingData } = await supabase
-      .from('ingredients')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
-    if (ingData) setIngredients(ingData)
+  // ─── Ingredient suggestions for recipe lines ──────────
+  const lineSuggestions = useMemo(() => {
+    if (activeLineIdx === null) return []
+    const line = recLines[activeLineIdx]
+    if (!line || line.name.length < 1) return []
+    const q = line.name.toLowerCase()
+    return INGREDIENTS.filter(p => p.name.toLowerCase().includes(q)).slice(0, 6)
+  }, [recLines, activeLineIdx])
 
-    const { data: recData } = await supabase
-      .from('recipes')
-      .select('*')
-      .eq('is_active', true)
-      .eq('brand', 'woki_woki')
-      .order('name')
-    if (recData) {
-      setRecipes(recData)
-      // Load all recipe ingredients
-      const ids = recData.map(r => r.id)
-      if (ids.length > 0) {
-        const { data: riData } = await supabase
-          .from('recipe_ingredients')
-          .select('*')
-          .in('recipe_id', ids)
-        if (riData && ingData) {
-          const grouped: Record<string, RecipeIngredient[]> = {}
-          riData.forEach(ri => {
-            const ing = ingData.find(i => i.id === ri.ingredient_id)
-            const enriched = {
-              ...ri,
-              ingredient_name: ing?.name || '?',
-              ingredient_price: ing?.price_per_unit || 0,
-              ingredient_unit: ing?.unit || ri.unit,
-            }
-            if (!grouped[ri.recipe_id]) grouped[ri.recipe_id] = []
-            grouped[ri.recipe_id].push(enriched)
-          })
-          setRecipeIngredients(grouped)
+  // ─── Calculate recipe cost ─────────────────────────────
+  function calcCost(lines: RecipeLine[]): number {
+    return lines.reduce((sum, l) => sum + l.pricePerKg * l.quantity, 0)
+  }
+
+  // ─── Add recipe ────────────────────────────────────────
+  function addRecipe() {
+    if (!recName.trim() || !recPrice) return
+    const lines: RecipeLine[] = recLines
+      .filter(l => l.name && parseFloat(l.quantity) > 0)
+      .map(l => {
+        const product = INGREDIENTS.find(p => p.name === l.name)
+        return {
+          productName: l.name,
+          pricePerKg: product?.price_per_kg || 0,
+          quantity: parseFloat(l.quantity),
         }
-      }
-    }
-    setLoadingData(false)
-  }, [])
+      })
 
-  useEffect(() => { loadData() }, [loadData])
-
-  // ─── Calculate cost ─────────────────────────────────────
-  function calcRecipeCost(recipeId: string): number {
-    const lines = recipeIngredients[recipeId] || []
-    return lines.reduce((sum, line) => {
-      return sum + (line.quantity * (line.ingredient_price || 0))
-    }, 0)
-  }
-
-  function calcFoodCostPercent(recipeId: string, sellingPrice: number | null): number {
-    if (!sellingPrice || sellingPrice <= 0) return 0
-    const cost = calcRecipeCost(recipeId)
-    const recipe = recipes.find(r => r.id === recipeId)
-    const portions = recipe?.portions || 1
-    return (cost / portions / sellingPrice) * 100
-  }
-
-  // ─── Add ingredient ──────────────────────────────────────
-  async function addIngredient() {
-    if (!ingName.trim() || !ingPrice) return
-    setSaving(true)
-    setError('')
-    const { error: err } = await supabase.from('ingredients').insert({
-      name: ingName.trim(),
-      unit: ingUnit,
-      price_per_unit: parseFloat(ingPrice),
-      supplier: ingSupplier.trim() || null,
-      category: ingCategory,
-    })
-    if (err) { setError(err.message); setSaving(false); return }
-    setIngName(''); setIngPrice(''); setIngSupplier('')
-    setSuccess('Składnik dodany!')
-    setTimeout(() => setSuccess(''), 3000)
-    setSaving(false)
-    loadData()
-    setTab('ingredients')
-  }
-
-  // ─── Add recipe ──────────────────────────────────────────
-  async function addRecipe() {
-    if (!recName.trim()) return
-    setSaving(true)
-    setError('')
-
-    const { data: newRec, error: err } = await supabase.from('recipes').insert({
+    const newRecipe: Recipe = {
+      id: Date.now().toString(),
       name: recName.trim(),
       category: recCategory,
-      brand: 'woki_woki',
+      sellingPrice: parseFloat(recPrice),
       portions: parseInt(recPortions) || 1,
-      selling_price: recPrice ? parseFloat(recPrice) : null,
-      notes: recNotes.trim() || null,
-    }).select().single()
-
-    if (err || !newRec) { setError(err?.message || 'Błąd'); setSaving(false); return }
-
-    // Add recipe lines
-    const validLines = recLines.filter(l => l.ingredient_id && parseFloat(l.quantity) > 0)
-    if (validLines.length > 0) {
-      const inserts = validLines.map(l => ({
-        recipe_id: newRec.id,
-        ingredient_id: l.ingredient_id,
-        quantity: parseFloat(l.quantity),
-        unit: l.unit,
-      }))
-      await supabase.from('recipe_ingredients').insert(inserts)
+      lines,
     }
 
-    setRecName(''); setRecPrice(''); setRecNotes(''); setRecPortions('1')
-    setRecLines([])
-    setSuccess('Przepis dodany!')
-    setTimeout(() => setSuccess(''), 3000)
-    setSaving(false)
-    loadData()
+    const updated = [...recipes, newRecipe]
+    setRecipes(updated)
+    saveRecipes(updated)
+    setRecName(''); setRecPrice(''); setRecPortions('1'); setRecLines([])
     setTab('recipes')
   }
 
   // ─── Delete recipe ─────────────────────────────────────
-  async function deleteRecipe(id: string) {
+  function deleteRecipe(id: string) {
     if (!confirm('Usunąć przepis?')) return
-    await supabase.from('recipes').update({ is_active: false }).eq('id', id)
+    const updated = recipes.filter(r => r.id !== id)
+    setRecipes(updated)
+    saveRecipes(updated)
     setSelectedRecipe(null)
-    loadData()
   }
 
   // ─── Render ───────────────────────────────────────────────
@@ -245,11 +150,6 @@ export default function FoodCostPage() {
       </div>
     )
   }
-
-  const filteredIng = ingredients.filter(i =>
-    i.name.toLowerCase().includes(searchIng.toLowerCase()) ||
-    i.category.toLowerCase().includes(searchIng.toLowerCase())
-  )
 
   const filteredRec = recipes.filter(r =>
     r.name.toLowerCase().includes(searchRec.toLowerCase())
@@ -270,10 +170,9 @@ export default function FoodCostPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 bg-white">
         {([
-          ['recipes', '🍜 Przepisy'],
           ['ingredients', '🥬 Składniki'],
+          ['recipes', '🍜 Przepisy'],
           ['add-recipe', '+ Przepis'],
-          ['add-ingredient', '+ Składnik'],
         ] as [TabType, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -287,31 +186,60 @@ export default function FoodCostPage() {
         ))}
       </div>
 
-      {/* Error / Success */}
-      {error && (
-        <div className="mx-4 mt-3 bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-xl">
-          {error} <button onClick={() => setError('')} className="ml-2 font-bold">✕</button>
-        </div>
-      )}
-      {success && (
-        <div className="mx-4 mt-3 bg-green-50 border border-green-200 text-green-700 text-xs p-2 rounded-xl font-semibold text-center">
-          {success}
-        </div>
-      )}
-
       <div className="max-w-lg mx-auto p-4">
 
-        {/* Loading */}
-        {loadingData && (
-          <div className="flex justify-center py-12">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-200 border-t-green-500" />
+        {/* ═══════════════════════════════════════════════
+             INGREDIENTS TAB — z foodcostProducts.ts
+           ═══════════════════════════════════════════════ */}
+        {tab === 'ingredients' && (
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={searchIng}
+              onChange={e => setSearchIng(e.target.value)}
+              placeholder="Szukaj składnika..."
+              className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 outline-none"
+            />
+
+            <div className="text-[10px] text-gray-400 text-right">
+              {filteredIngredients.length} składników
+            </div>
+
+            {CATEGORY_ORDER.map(cat => {
+              const items = filteredIngredients.filter(p => p.category === cat)
+              if (items.length === 0) return null
+              return (
+                <div key={cat}>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 px-1">
+                    {cat} ({items.length})
+                  </div>
+                  <div className="space-y-1">
+                    {items.map((p, i) => (
+                      <div key={i} className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
+                        <span className="text-sm text-gray-700 font-medium">{p.name}</span>
+                        <div className="text-right">
+                          {p.price_per_kg != null && p.price_per_kg > 0 ? (
+                            <>
+                              <span className="text-sm font-bold text-gray-900">{p.price_per_kg.toFixed(2)} zł</span>
+                              <span className="text-[10px] text-gray-400 ml-1">/kg</span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-300">brak ceny</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
         {/* ═══════════════════════════════════════════════
              RECIPES TAB
            ═══════════════════════════════════════════════ */}
-        {tab === 'recipes' && !loadingData && (
+        {tab === 'recipes' && (
           <div className="space-y-3">
             <input
               type="text"
@@ -332,10 +260,9 @@ export default function FoodCostPage() {
             )}
 
             {filteredRec.map(rec => {
-              const cost = calcRecipeCost(rec.id)
+              const cost = calcCost(rec.lines)
               const costPerPortion = rec.portions > 0 ? cost / rec.portions : cost
-              const fcPercent = calcFoodCostPercent(rec.id, rec.selling_price)
-              const lines = recipeIngredients[rec.id] || []
+              const fcPercent = rec.sellingPrice > 0 ? (costPerPortion / rec.sellingPrice) * 100 : 0
               const isOpen = selectedRecipe === rec.id
 
               return (
@@ -356,75 +283,60 @@ export default function FoodCostPage() {
                         <div className="text-sm font-bold text-gray-900">
                           {costPerPortion.toFixed(2)} zł
                         </div>
-                        {rec.selling_price && (
-                          <div className={`text-[10px] font-bold ${
-                            fcPercent <= 30 ? 'text-green-600' : fcPercent <= 35 ? 'text-amber-600' : 'text-red-600'
-                          }`}>
-                            FC: {fcPercent.toFixed(1)}%
-                          </div>
-                        )}
+                        <div className={`text-[10px] font-bold ${
+                          fcPercent <= 30 ? 'text-green-600' : fcPercent <= 35 ? 'text-amber-600' : 'text-red-600'
+                        }`}>
+                          FC: {fcPercent.toFixed(1)}%
+                        </div>
                       </div>
                     </div>
 
-                    {/* FC bar */}
-                    {rec.selling_price && (
-                      <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full ${
-                            fcPercent <= 30 ? 'bg-green-500' : fcPercent <= 35 ? 'bg-amber-500' : 'bg-red-500'
-                          }`}
-                          style={{ width: `${Math.min(fcPercent, 100)}%` }}
-                        />
-                      </div>
-                    )}
+                    <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className={`h-1.5 rounded-full ${
+                          fcPercent <= 30 ? 'bg-green-500' : fcPercent <= 35 ? 'bg-amber-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(fcPercent, 100)}%` }}
+                      />
+                    </div>
                   </button>
 
-                  {/* Detail view */}
                   {isOpen && (
                     <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
-                      {rec.selling_price && (
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-white rounded-xl p-2">
-                            <div className="text-[10px] text-gray-400">Koszt</div>
-                            <div className="text-sm font-bold">{costPerPortion.toFixed(2)} zł</div>
-                          </div>
-                          <div className="bg-white rounded-xl p-2">
-                            <div className="text-[10px] text-gray-400">Cena</div>
-                            <div className="text-sm font-bold">{rec.selling_price.toFixed(2)} zł</div>
-                          </div>
-                          <div className="bg-white rounded-xl p-2">
-                            <div className="text-[10px] text-gray-400">Marża</div>
-                            <div className="text-sm font-bold text-green-600">
-                              {(rec.selling_price - costPerPortion).toFixed(2)} zł
-                            </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white rounded-xl p-2">
+                          <div className="text-[10px] text-gray-400">Koszt</div>
+                          <div className="text-sm font-bold">{costPerPortion.toFixed(2)} zł</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-2">
+                          <div className="text-[10px] text-gray-400">Cena</div>
+                          <div className="text-sm font-bold">{rec.sellingPrice.toFixed(2)} zł</div>
+                        </div>
+                        <div className="bg-white rounded-xl p-2">
+                          <div className="text-[10px] text-gray-400">Marża</div>
+                          <div className="text-sm font-bold text-green-600">
+                            {(rec.sellingPrice - costPerPortion).toFixed(2)} zł
                           </div>
                         </div>
-                      )}
+                      </div>
 
-                      <div className="text-[10px] text-gray-400 font-semibold uppercase">Składniki ({lines.length})</div>
-                      {lines.length === 0 && (
-                        <p className="text-xs text-gray-400">Brak składników w przepisie</p>
-                      )}
-                      {lines.map(line => (
-                        <div key={line.id} className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
+                      <div className="text-[10px] text-gray-400 font-semibold uppercase">
+                        Składniki ({rec.lines.length})
+                      </div>
+                      {rec.lines.map((line, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
                           <div>
-                            <span className="text-sm text-gray-700">{line.ingredient_name}</span>
-                            <span className="text-xs text-gray-400 ml-2">{line.quantity} {line.unit}</span>
+                            <span className="text-sm text-gray-700">{line.productName}</span>
+                            <span className="text-xs text-gray-400 ml-2">{line.quantity} kg</span>
                           </div>
                           <span className="text-xs font-bold text-gray-600">
-                            {(line.quantity * (line.ingredient_price || 0)).toFixed(2)} zł
+                            {(line.pricePerKg * line.quantity).toFixed(2)} zł
                           </span>
                         </div>
                       ))}
 
-                      {rec.notes && (
-                        <p className="text-xs text-gray-500 italic">📝 {rec.notes}</p>
-                      )}
-
-                      <button
-                        onClick={() => deleteRecipe(rec.id)}
-                        className="text-xs text-red-400 hover:text-red-600"
-                      >
+                      <button onClick={() => deleteRecipe(rec.id)}
+                        className="text-xs text-red-400 hover:text-red-600">
                         Usuń przepis
                       </button>
                     </div>
@@ -433,15 +345,17 @@ export default function FoodCostPage() {
               )
             })}
 
-            {/* Summary */}
             {filteredRec.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
                 <div className="text-xs text-green-600 font-semibold">Średni Food Cost</div>
                 <div className="text-2xl font-bold text-green-700">
                   {(() => {
-                    const withPrice = filteredRec.filter(r => r.selling_price && r.selling_price > 0)
-                    if (withPrice.length === 0) return '—'
-                    const avg = withPrice.reduce((s, r) => s + calcFoodCostPercent(r.id, r.selling_price), 0) / withPrice.length
+                    const valid = filteredRec.filter(r => r.sellingPrice > 0 && r.lines.length > 0)
+                    if (valid.length === 0) return '—'
+                    const avg = valid.reduce((s, r) => {
+                      const c = calcCost(r.lines) / (r.portions || 1)
+                      return s + (c / r.sellingPrice * 100)
+                    }, 0) / valid.length
                     return `${avg.toFixed(1)}%`
                   })()}
                 </div>
@@ -452,110 +366,7 @@ export default function FoodCostPage() {
         )}
 
         {/* ═══════════════════════════════════════════════
-             INGREDIENTS TAB
-           ═══════════════════════════════════════════════ */}
-        {tab === 'ingredients' && !loadingData && (
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={searchIng}
-              onChange={e => setSearchIng(e.target.value)}
-              placeholder="Szukaj składnika..."
-              className="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-300 outline-none"
-            />
-
-            {filteredIng.length === 0 && (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-2 opacity-30">🥬</div>
-                <p className="text-gray-400 text-sm">Brak składników</p>
-                <button onClick={() => setTab('add-ingredient')} className="mt-3 text-green-600 text-sm font-semibold">
-                  + Dodaj pierwszy składnik
-                </button>
-              </div>
-            )}
-
-            {/* Group by category */}
-            {CATEGORIES.map(cat => {
-              const items = filteredIng.filter(i => i.category === cat.value)
-              if (items.length === 0) return null
-              return (
-                <div key={cat.value}>
-                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 px-1">
-                    {cat.label} ({items.length})
-                  </div>
-                  <div className="space-y-1">
-                    {items.map(ing => (
-                      <div key={ing.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2 flex items-center justify-between">
-                        <div>
-                          <span className="text-sm text-gray-700 font-medium">{ing.name}</span>
-                          {ing.supplier && (
-                            <span className="text-[10px] text-gray-400 ml-2">{ing.supplier}</span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <span className="text-sm font-bold text-gray-900">{ing.price_per_unit.toFixed(2)} zł</span>
-                          <span className="text-[10px] text-gray-400 ml-1">/{ing.unit}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════
-             ADD INGREDIENT
-           ═══════════════════════════════════════════════ */}
-        {tab === 'add-ingredient' && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Nowy składnik</h2>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Nazwa</label>
-              <input value={ingName} onChange={e => setIngName(e.target.value)}
-                placeholder="np. Pierś z kurczaka" className="w-full p-3 border rounded-xl text-sm" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Cena (PLN)</label>
-                <input type="number" step="0.01" value={ingPrice} onChange={e => setIngPrice(e.target.value)}
-                  placeholder="0.00" className="w-full p-3 border rounded-xl text-sm" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1 block">Jednostka</label>
-                <select value={ingUnit} onChange={e => setIngUnit(e.target.value)}
-                  className="w-full p-3 border rounded-xl text-sm bg-white">
-                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Kategoria</label>
-              <select value={ingCategory} onChange={e => setIngCategory(e.target.value)}
-                className="w-full p-3 border rounded-xl text-sm bg-white">
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Dostawca (opcjonalnie)</label>
-              <input value={ingSupplier} onChange={e => setIngSupplier(e.target.value)}
-                placeholder="np. MAKRO, Kuchnia Świata" className="w-full p-3 border rounded-xl text-sm" />
-            </div>
-
-            <button onClick={addIngredient} disabled={saving || !ingName.trim() || !ingPrice}
-              className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-40">
-              {saving ? 'Zapisuję...' : 'Dodaj składnik'}
-            </button>
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════
-             ADD RECIPE
+             ADD RECIPE — z autocomplete z foodcostProducts
            ═══════════════════════════════════════════════ */}
         {tab === 'add-recipe' && (
           <div className="space-y-4">
@@ -588,115 +399,124 @@ export default function FoodCostPage() {
                 placeholder="np. 32.00" className="w-full p-3 border rounded-xl text-sm" />
             </div>
 
-            {/* Recipe lines */}
+            {/* Recipe lines with autocomplete */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-semibold text-gray-500">Składniki</label>
                 <button
-                  onClick={() => setRecLines([...recLines, { ingredient_id: '', quantity: '', unit: 'kg' }])}
+                  onClick={() => { setRecLines([...recLines, { name: '', quantity: '' }]); setActiveLineIdx(recLines.length) }}
                   className="text-xs text-green-600 font-semibold"
                 >
                   + Dodaj składnik
                 </button>
               </div>
 
-              {ingredients.length === 0 && (
-                <p className="text-xs text-gray-400 py-2">
-                  Najpierw dodaj składniki w zakładce &quot;+ Składnik&quot;
-                </p>
-              )}
-
               <div className="space-y-2">
-                {recLines.map((line, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-xl p-2">
-                    <select
-                      value={line.ingredient_id}
-                      onChange={e => {
-                        const updated = [...recLines]
-                        updated[idx].ingredient_id = e.target.value
-                        const ing = ingredients.find(i => i.id === e.target.value)
-                        if (ing) updated[idx].unit = ing.unit
-                        setRecLines(updated)
-                      }}
-                      className="flex-1 p-2 border rounded-lg text-xs bg-white"
-                    >
-                      <option value="">Wybierz...</option>
-                      {ingredients.map(i => (
-                        <option key={i.id} value={i.id}>{i.name} ({i.price_per_unit} zł/{i.unit})</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      step="0.001"
-                      value={line.quantity}
-                      onChange={e => {
-                        const updated = [...recLines]
-                        updated[idx].quantity = e.target.value
-                        setRecLines(updated)
-                      }}
-                      placeholder="Ilość"
-                      className="w-20 p-2 border rounded-lg text-xs text-right"
-                    />
-                    <span className="text-xs text-gray-400 w-8">{line.unit}</span>
-                    <button
-                      onClick={() => setRecLines(recLines.filter((_, i) => i !== idx))}
-                      className="text-red-400 hover:text-red-600 text-sm p-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                {recLines.map((line, idx) => {
+                  const product = INGREDIENTS.find(p => p.name === line.name)
+                  const lineCost = product?.price_per_kg && parseFloat(line.quantity)
+                    ? (product.price_per_kg * parseFloat(line.quantity)).toFixed(2)
+                    : null
+
+                  return (
+                    <div key={idx} className="relative">
+                      <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            value={line.name}
+                            onChange={e => {
+                              const updated = [...recLines]
+                              updated[idx].name = e.target.value
+                              setRecLines(updated)
+                              setActiveLineIdx(idx)
+                            }}
+                            onFocus={() => setActiveLineIdx(idx)}
+                            placeholder="Wpisz składnik..."
+                            className="w-full p-2 border rounded-lg text-xs bg-white"
+                          />
+                          {/* Autocomplete dropdown */}
+                          {activeLineIdx === idx && lineSuggestions.length > 0 && line.name.length > 0 && !product && (
+                            <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                              {lineSuggestions.map((s, si) => (
+                                <button
+                                  key={si}
+                                  onClick={() => {
+                                    const updated = [...recLines]
+                                    updated[idx].name = s.name
+                                    setRecLines(updated)
+                                    setActiveLineIdx(null)
+                                  }}
+                                  className="w-full px-3 py-2 text-left text-xs hover:bg-green-50 flex justify-between"
+                                >
+                                  <span>{s.name}</span>
+                                  <span className="text-gray-400">
+                                    {s.price_per_kg ? `${s.price_per_kg} zł/kg` : '—'}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={line.quantity}
+                          onChange={e => {
+                            const updated = [...recLines]
+                            updated[idx].quantity = e.target.value
+                            setRecLines(updated)
+                          }}
+                          placeholder="kg"
+                          className="w-20 p-2 border rounded-lg text-xs text-right"
+                        />
+                        {lineCost && (
+                          <span className="text-[10px] font-bold text-green-600 w-16 text-right">{lineCost} zł</span>
+                        )}
+                        <button onClick={() => setRecLines(recLines.filter((_, i) => i !== idx))}
+                          className="text-red-400 hover:text-red-600 text-sm p-1">✕</button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
 
               {/* Live cost preview */}
-              {recLines.some(l => l.ingredient_id && parseFloat(l.quantity) > 0) && (
+              {recLines.some(l => l.name && parseFloat(l.quantity) > 0) && (
                 <div className="mt-3 bg-lime-50 border border-lime-200 rounded-xl p-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Koszt składników:</span>
                     <span className="font-bold">
                       {recLines.reduce((sum, l) => {
-                        const ing = ingredients.find(i => i.id === l.ingredient_id)
-                        return sum + (parseFloat(l.quantity) || 0) * (ing?.price_per_unit || 0)
+                        const p = INGREDIENTS.find(x => x.name === l.name)
+                        return sum + (parseFloat(l.quantity) || 0) * (p?.price_per_kg || 0)
                       }, 0).toFixed(2)} zł
                     </span>
                   </div>
-                  {recPrice && (
+                  {recPrice && parseFloat(recPrice) > 0 && (
                     <div className="flex justify-between text-sm mt-1">
                       <span className="text-gray-600">Food Cost:</span>
-                      <span className={`font-bold ${
-                        (() => {
-                          const cost = recLines.reduce((sum, l) => {
-                            const ing = ingredients.find(i => i.id === l.ingredient_id)
-                            return sum + (parseFloat(l.quantity) || 0) * (ing?.price_per_unit || 0)
-                          }, 0)
-                          const fc = cost / (parseInt(recPortions) || 1) / parseFloat(recPrice) * 100
-                          return fc <= 30 ? 'text-green-600' : fc <= 35 ? 'text-amber-600' : 'text-red-600'
-                        })()
-                      }`}>
-                        {(() => {
-                          const cost = recLines.reduce((sum, l) => {
-                            const ing = ingredients.find(i => i.id === l.ingredient_id)
-                            return sum + (parseFloat(l.quantity) || 0) * (ing?.price_per_unit || 0)
-                          }, 0)
-                          return (cost / (parseInt(recPortions) || 1) / parseFloat(recPrice) * 100).toFixed(1)
-                        })()}%
-                      </span>
+                      {(() => {
+                        const cost = recLines.reduce((sum, l) => {
+                          const p = INGREDIENTS.find(x => x.name === l.name)
+                          return sum + (parseFloat(l.quantity) || 0) * (p?.price_per_kg || 0)
+                        }, 0)
+                        const fc = cost / (parseInt(recPortions) || 1) / parseFloat(recPrice) * 100
+                        return (
+                          <span className={`font-bold ${fc <= 30 ? 'text-green-600' : fc <= 35 ? 'text-amber-600' : 'text-red-600'}`}>
+                            {fc.toFixed(1)}%
+                          </span>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">Notatki (opcjonalnie)</label>
-              <textarea value={recNotes} onChange={e => setRecNotes(e.target.value)}
-                placeholder="np. sposób przygotowania, czas, uwagi"
-                rows={2} className="w-full p-3 border rounded-xl text-sm resize-none" />
-            </div>
-
-            <button onClick={addRecipe} disabled={saving || !recName.trim()}
+            <button onClick={addRecipe} disabled={!recName.trim() || !recPrice}
               className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-sm disabled:opacity-40">
-              {saving ? 'Zapisuję...' : 'Dodaj przepis'}
+              Dodaj przepis
             </button>
           </div>
         )}
