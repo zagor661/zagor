@@ -6,6 +6,7 @@ import { isAdminRole, normalizeRole } from '@/lib/roles'
 import supabase from '@/lib/supabase'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { pl } from 'date-fns/locale'
+import { notifyWokiTalkie } from '@/lib/pushClient'
 
 // ─── Types ──────────────────────────────────────────────────
 interface Worker {
@@ -374,6 +375,9 @@ export default function WokiTalkiePage() {
         audio_duration_sec: audioBlob ? recordingTime : null,
         transcription: transcription,
       })
+
+      // Push notification to all staff
+      notifyWokiTalkie(user.location_id, user.full_name, transcription)
 
       const skipped = extractedTasks.length - dispatched
       const msg = `Wyslano ${dispatched} ${dispatched === 1 ? 'zadanie' : dispatched < 5 ? 'zadania' : 'zadan'}!`

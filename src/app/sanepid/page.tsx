@@ -186,6 +186,59 @@ export default function SanepidHub() {
 
         </div>
 
+        {/* ─── SANEPID VAULT ─── */}
+        {canSendReport && (
+          <div className="space-y-3">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
+              Sanepid Vault
+            </h2>
+
+            <Link href="/sanepid/dokumenty" className="block card border-2 border-amber-100 bg-amber-50 hover:shadow-md transition-shadow active:scale-98">
+              <div className="flex items-center gap-4">
+                <span className="text-4xl">📁</span>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-gray-900">Dokumenty</h2>
+                  <p className="text-sm text-gray-500">Umowy, decyzje, protokoły, karty chemiczne</p>
+                </div>
+                <span className="text-gray-300 text-2xl">›</span>
+              </div>
+            </Link>
+
+            <Link href="/sanepid/personel" className="block card border-2 border-purple-100 bg-purple-50 hover:shadow-md transition-shadow active:scale-98">
+              <div className="flex items-center gap-4">
+                <span className="text-4xl">🏥</span>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-gray-900">Personel</h2>
+                  <p className="text-sm text-gray-500">Orzeczenia sanitarne, szkolenia, wygasanie</p>
+                </div>
+                <span className="text-gray-300 text-2xl">›</span>
+              </div>
+            </Link>
+
+            <Link href="/sanepid/alergeny" className="block card border-2 border-pink-100 bg-pink-50 hover:shadow-md transition-shadow active:scale-98">
+              <div className="flex items-center gap-4">
+                <span className="text-4xl">⚠️</span>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-gray-900">Karta alergenow</h2>
+                  <p className="text-sm text-gray-500">14 alergenow UE per danie — obowiazek ustawowy</p>
+                </div>
+                <span className="text-gray-300 text-2xl">›</span>
+              </div>
+            </Link>
+
+            <Link href="/sanepid/dostawy" className="block card border-2 border-cyan-100 bg-cyan-50 hover:shadow-md transition-shadow active:scale-98">
+              <div className="flex items-center gap-4">
+                <span className="text-4xl">🚚</span>
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-gray-900">Dostawy</h2>
+                  <p className="text-sm text-gray-500">Log przyjeć — WZ, temperatura, odrzucenia</p>
+                </div>
+                <span className="text-gray-300 text-2xl">›</span>
+              </div>
+            </Link>
+          </div>
+        )}
+
         {/* Info footer */}
         <div className="text-center text-xs text-gray-400 pt-4">
           Wszystkie dane trafiają do raportu HACCP dla inspektora Sanepidu.

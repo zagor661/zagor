@@ -23,7 +23,7 @@ export default function Dashboard() {
   // Owner Pulse data
   const [tasksByWorker, setTasksByWorker] = useState<{ name: string; count: number }[]>([])
   const [recentIssues, setRecentIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
-  const [todayLosses, setTodayLosses] = useState<{ count: number; names: string[] }>({ count: 0, names: [] })
+  const [todayLosses, setTodayLosses] = useState<{ count: number; names: string[]; totalValue?: number }>({ count: 0, names: [] })
   const [reportData, setReportData] = useState<{
     todayMeals: number; weekMeals: number; monthMeals: number;
     todayIssues: number; weekIssues: number; monthIssues: number;
@@ -32,9 +32,10 @@ export default function Dashboard() {
 
   // Summary expandable
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const [allIssues, setAllIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
-  const [allLosses, setAllLosses] = useState<{ item_name: string; quantity: number; created_at: string }[]>([])
-  const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; rate: number; cost: number }[]>([])
+  const [allLosses, setAllLosses] = useState<{ item_name: string; quantity: number; estimated_value?: number; created_at: string }[]>([])
+  const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; rate: number; cost: number; contract: string }[]>([])
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -198,20 +199,20 @@ export default function Dashboard() {
 
         // Today's losses (for pulse)
         try {
-          const { data: lossData } = await supabase.from('waste_logs').select('item_name, quantity, created_at').gte('created_at', todayStr)
+          const { data: lossData } = await supabase.from('waste_logs').select('item_name, quantity, estimated_value, created_at').gte('created_at', todayStr)
           if (lossData) {
-            setTodayLosses({ count: lossData.length, names: lossData.slice(0, 3).map((l: any) => l.item_name) })
+            const totalValue = lossData.reduce((s: number, l: any) => s + (l.estimated_value || 0), 0)
+            setTodayLosses({ count: lossData.length, names: lossData.slice(0, 3).map((l: any) => l.item_name), totalValue })
           }
         } catch {}
 
-        // ALL losses this month (for summary)
+        // ALL losses this month (for summary) — with estimated_value from food cost
         try {
-          const { data: allLossData } = await supabase.from('waste_logs').select('item_name, quantity, created_at').eq('location_id', user!.location_id).gte('created_at', monthStart).order('created_at', { ascending: false })
+          const { data: allLossData } = await supabase.from('waste_logs').select('item_name, quantity, estimated_value, created_at').eq('location_id', user!.location_id).gte('created_at', monthStart).order('created_at', { ascending: false })
           if (allLossData) setAllLosses(allLossData)
         } catch {}
 
-        // Worker hours this month + rates (umowa zlecenie)
-        // Stawki: Yurii 35 PLN/h, reszta 29 PLN/h
+        // Worker hours this month + rates from DB (hourly_rate column)
         try {
           const { data: monthClocks } = await supabase
             .from('clock_logs')
@@ -221,16 +222,17 @@ export default function Dashboard() {
             .not('hours_worked', 'is', null)
 
           if (monthClocks && monthClocks.length > 0) {
-            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name').eq('is_active', true)
+            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, hourly_rate, contract_type').eq('is_active', true)
             const hoursMap: Record<string, number> = {}
             monthClocks.forEach(c => {
               if (c.worker_id) hoursMap[c.worker_id] = (hoursMap[c.worker_id] || 0) + (c.hours_worked || 0)
             })
             const result = Object.entries(hoursMap).map(([id, hours]) => {
-              const name = allProfiles?.find(p => p.id === id)?.full_name || '?'
-              const isYurii = name.toLowerCase().includes('yurii')
-              const rate = isYurii ? 35 : 29
-              return { name, hours: Math.round(hours * 10) / 10, rate, cost: Math.round(hours * rate) }
+              const profile = allProfiles?.find(p => p.id === id)
+              const name = profile?.full_name || '?'
+              const rate = profile?.hourly_rate ?? 29
+              const contract = profile?.contract_type || 'zlecenie'
+              return { name, hours: Math.round(hours * 10) / 10, rate, cost: Math.round(hours * rate), contract }
             }).sort((a, b) => b.hours - a.hours)
             setWorkerHours(result)
           }
@@ -438,7 +440,11 @@ export default function Dashboard() {
                 <div className="text-xs text-gray-500">Straty dzis</div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-lg font-bold text-gray-900">{todayLosses.count}</span>
-                  <span className="text-xs text-gray-400">szt</span>
+                  {todayLosses.totalValue ? (
+                    <span className="text-xs text-rose-600 font-semibold">{todayLosses.totalValue.toFixed(0)} zl</span>
+                  ) : (
+                    <span className="text-xs text-gray-400">szt</span>
+                  )}
                 </div>
                 {todayLosses.names.length > 0 && (
                   <div className="text-[10px] text-gray-400 mt-1 truncate">
@@ -662,7 +668,7 @@ export default function Dashboard() {
                             <span className="text-sm font-bold text-gray-900">{w.cost} zl</span>
                           </div>
                           <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs text-gray-400">{w.rate} zl/h · umowa zlecenie</span>
+                            <span className="text-xs text-gray-400">{w.rate} zl/h · umowa {w.contract}</span>
                             <span className="text-xs text-gray-500">{w.hours}h w tym miesiacu</span>
                           </div>
                           {/* Progress bar (max ~176h = 22 days * 8h) */}
@@ -720,8 +726,15 @@ export default function Dashboard() {
 
                 {/* ── Wszystkie straty ── */}
                 <div>
-                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                    Straty w tym miesiacu ({allLosses.length})
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Straty w tym miesiacu ({allLosses.length})
+                    </div>
+                    {allLosses.some(l => l.estimated_value) && (
+                      <span className="text-xs font-bold text-rose-600">
+                        {allLosses.reduce((s, l) => s + (l.estimated_value || 0), 0).toFixed(0)} zl
+                      </span>
+                    )}
                   </div>
                   {allLosses.length > 0 ? (
                     <div className="space-y-1.5">
@@ -733,9 +746,13 @@ export default function Dashboard() {
                               {new Date(loss.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
                             </div>
                           </div>
-                          {loss.quantity > 0 && (
-                            <span className="text-xs font-semibold text-rose-600">{loss.quantity} szt</span>
-                          )}
+                          <div className="text-right">
+                            {loss.estimated_value ? (
+                              <span className="text-xs font-semibold text-rose-600">{loss.estimated_value.toFixed(2)} zl</span>
+                            ) : loss.quantity > 0 ? (
+                              <span className="text-xs font-semibold text-rose-600">{loss.quantity} szt</span>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -762,6 +779,50 @@ export default function Dashboard() {
                     <div className="text-[10px] text-gray-400">w miesiacu</div>
                   </div>
                 </div>
+
+                {/* ── Pobierz PDF ── */}
+                <button
+                  onClick={async () => {
+                    setPdfLoading(true)
+                    try {
+                      const now = new Date()
+                      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                      const res = await fetch('/api/summary-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          locationId: user.location_id,
+                          userId: user.id,
+                          month: monthStr,
+                        }),
+                      })
+                      if (!res.ok) throw new Error('Blad generowania PDF')
+                      const blob = await res.blob()
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `Podsumowanie_${monthStr}.pdf`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    } catch (err: any) {
+                      alert(err.message || 'Blad PDF')
+                    }
+                    setPdfLoading(false)
+                  }}
+                  disabled={pdfLoading}
+                  className="w-full mt-2 bg-gray-900 hover:bg-gray-800 text-white font-semibold py-3 rounded-xl text-sm active:scale-[0.97] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {pdfLoading ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Generowanie...
+                    </>
+                  ) : (
+                    <>
+                      📄 Pobierz PDF podsumowania
+                    </>
+                  )}
+                </button>
 
               </div>
             )}

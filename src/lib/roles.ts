@@ -172,6 +172,15 @@ const MOD_DAILY_REPORT: ModuleConfig = {
   bgColor: 'bg-blue-50',
 }
 
+const MOD_WORKER_PROFILES: ModuleConfig = {
+  href: '/worker',
+  icon: '📁',
+  title: 'Teczki pracownikow',
+  subtitle: 'Dane, umowy, stawki, godziny',
+  borderColor: 'border-blue-200',
+  bgColor: 'bg-blue-50',
+}
+
 const MOD_USTAWIENIA: ModuleConfig = {
   href: '/settings',
   icon: '⚙️',
@@ -265,12 +274,12 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_WORKER_PROFILES],
     quickActions: ['/daily-report', '/tasks'],
     sections: [
       {
         title: 'Zespol',
-        items: [MOD_SCHEDULE, MOD_STARS, MOD_MEALS],
+        items: [MOD_SCHEDULE, MOD_WORKER_PROFILES, MOD_STARS, MOD_MEALS],
       },
       {
         title: 'HACCP i kontrola',
@@ -299,12 +308,12 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_USTAWIENIA],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_WORKER_PROFILES, MOD_USTAWIENIA],
     quickActions: ['/daily-report', '/woki-talkie'],
     sections: [
       {
         title: 'Zespol i grafik',
-        items: [MOD_SCHEDULE, MOD_STARS, MOD_MEALS],
+        items: [MOD_SCHEDULE, MOD_WORKER_PROFILES, MOD_STARS, MOD_MEALS],
       },
       {
         title: 'HACCP i kontrola',

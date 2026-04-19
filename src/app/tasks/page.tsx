@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+import { notifyNewTask } from '@/lib/pushClient'
 
 type TaskStatus = 'new' | 'read' | 'in_progress' | 'done' | 'problem'
 
@@ -280,6 +281,11 @@ export default function TasksPage() {
     })
 
     if (error) { alert('Błąd: ' + error.message); setSaving(false); return }
+
+    // Push notification to assigned worker
+    if (newAssign) {
+      notifyNewTask(user.location_id, newAssign, newTitle.trim())
+    }
 
     setNewTitle('')
     setNewDesc('')

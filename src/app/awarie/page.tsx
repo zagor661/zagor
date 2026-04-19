@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+import { notifyNewIssue } from '@/lib/pushClient'
 
 interface Breakdown {
   id: string
@@ -178,6 +179,9 @@ export default function BreakdownsPage() {
         status: 'Zgłoszone',
       })
       if (error) throw error
+
+      // Push notification to all staff in location
+      notifyNewIssue(user.location_id, `${type}: ${description.trim().slice(0, 80)}`)
 
       // Try sending report email — non-blocking, matches temperature pattern
       try {
