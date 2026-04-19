@@ -84,7 +84,6 @@ export default function WokiTalkiePage() {
     let { data, error: err } = await supabase
       .from('profiles')
       .select('id, full_name, role, preferred_language')
-      .eq('location_id', user.location_id)
       .eq('is_active', true)
       .order('full_name')
 
@@ -93,7 +92,6 @@ export default function WokiTalkiePage() {
       const res = await supabase
         .from('profiles')
         .select('id, full_name, role')
-        .eq('location_id', user.location_id)
         .eq('is_active', true)
         .order('full_name')
       data = (res.data || []).map(w => ({ ...w, preferred_language: 'pl' }))
@@ -112,7 +110,6 @@ export default function WokiTalkiePage() {
     const { data } = await supabase
       .from('woki_messages')
       .select('*')
-      .eq('location_id', user.location_id)
       .eq('sender_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50)
