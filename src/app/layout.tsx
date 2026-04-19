@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { ServiceWorkerRegistration } from './sw-register'
+import BottomNav from '@/components/BottomNav'
 
 export const metadata: Metadata = {
   title: 'KitchenOps',
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#4f46e5',
+  themeColor: '#ffffff',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -27,8 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="bg-gray-50 text-gray-900 min-h-screen">
+      <body className="bg-stone-50 text-gray-900 min-h-screen pb-20">
         {children}
+        <BottomNav />
         <ServiceWorkerRegistration />
       </body>
     </html>

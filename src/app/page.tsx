@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { ROLES, normalizeRole, isAdminRole } from '@/lib/roles'
-import type { RoleType } from '@/lib/roles'
+import type { RoleType, ModuleConfig } from '@/lib/roles'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import supabase from '@/lib/supabase'
@@ -18,19 +18,23 @@ export default function Dashboard() {
   const [minKitchen, setMinKitchen] = useState(2)
   const [minHall, setMinHall] = useState(1)
   const [pendingSwaps, setPendingSwaps] = useState(0)
-  // Report section data
+  const [checklistProgress, setChecklistProgress] = useState<{ done: number; total: number } | null>(null)
+
+  // Owner Pulse data
+  const [tasksByWorker, setTasksByWorker] = useState<{ name: string; count: number }[]>([])
+  const [recentIssues, setRecentIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
+  const [todayLosses, setTodayLosses] = useState<{ count: number; names: string[] }>({ count: 0, names: [] })
   const [reportData, setReportData] = useState<{
     todayMeals: number; weekMeals: number; monthMeals: number;
     todayIssues: number; weekIssues: number; monthIssues: number;
     todayShiftsCount: number; weekShiftsCount: number; monthShiftsCount: number;
   }>({ todayMeals: 0, weekMeals: 0, monthMeals: 0, todayIssues: 0, weekIssues: 0, monthIssues: 0, todayShiftsCount: 0, weekShiftsCount: 0, monthShiftsCount: 0 })
 
-  // Owner Command Center data
-  const [tasksByWorker, setTasksByWorker] = useState<{ name: string; count: number }[]>([])
-  const [checklistProgress, setChecklistProgress] = useState<{ done: number; total: number } | null>(null)
-  const [recentIssues, setRecentIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
-  const [todayLosses, setTodayLosses] = useState<{ count: number; names: string[] }>({ count: 0, names: [] })
-  const [recentCommands, setRecentCommands] = useState<{ transcription: string; created_at: string }[]>([])
+  // Summary expandable
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [allIssues, setAllIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
+  const [allLosses, setAllLosses] = useState<{ item_name: string; quantity: number; created_at: string }[]>([])
+  const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; rate: number; cost: number }[]>([])
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -40,6 +44,8 @@ export default function Dashboard() {
     if (!user) return
 
     async function loadData() {
+      const todayStr = format(new Date(), 'yyyy-MM-dd')
+
       // Star count
       const { count: stars } = await supabase
         .from('worker_stars')
@@ -56,7 +62,6 @@ export default function Dashboard() {
       setPendingTasks(tasks || 0)
 
       // Today's shifts
-      const todayStr = format(new Date(), 'yyyy-MM-dd')
       const { data: shiftData } = await supabase
         .from('schedule_shifts')
         .select('worker_id, department, start_time, end_time')
@@ -77,28 +82,26 @@ export default function Dashboard() {
         setTodayShifts(enriched)
       }
 
-      // Today's clock logs (+ breaks)
+      // Today's clock logs
       const { data: clockData } = await supabase
         .from('clock_logs')
         .select('worker_id, clock_in, clock_out, breaks')
         .eq('location_id', user!.location_id)
         .eq('clock_date', todayStr)
-
       if (clockData) setTodayClock(clockData)
 
-      // Schedule settings (min staffing)
+      // Schedule settings
       const { data: schedSettings } = await supabase
         .from('schedule_settings')
         .select('min_kitchen, min_hall')
         .eq('location_id', user!.location_id)
         .single()
-
       if (schedSettings) {
         setMinKitchen(schedSettings.min_kitchen)
         setMinHall(schedSettings.min_hall)
       }
 
-      // Pending swap requests for me
+      // Pending swaps
       const { count: swapCount } = await supabase
         .from('swap_requests')
         .select('*', { count: 'exact', head: true })
@@ -106,16 +109,28 @@ export default function Dashboard() {
         .eq('status', 'pending')
       setPendingSwaps(swapCount || 0)
 
-      // Report summary data (admin only)
-      const userRole = normalizeRole(user!.role)
-      if (userRole === 'manager' || userRole === 'owner') {
-        const todayStr = format(new Date(), 'yyyy-MM-dd')
+      // Checklist progress today
+      try {
+        const { data: checkData } = await supabase
+          .from('checklist_logs')
+          .select('is_done')
+          .gte('created_at', todayStr)
+        if (checkData) {
+          setChecklistProgress({
+            total: checkData.length,
+            done: checkData.filter((c: any) => c.is_done).length,
+          })
+        }
+      } catch {}
+
+      // Admin/Owner data
+      if (isAdminRole(user!.role)) {
         const now = new Date()
         const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7)
         const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd')
         const weekAgoStr = format(weekAgo, 'yyyy-MM-dd')
 
-        // Meals counts (table may not exist yet)
+        // Meals
         let mToday = 0, mWeek = 0, mMonth = 0
         try {
           const r1 = await supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).eq('meal_date', todayStr)
@@ -124,9 +139,9 @@ export default function Dashboard() {
           mWeek = r2.count || 0
           const r3 = await supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('meal_date', monthStart)
           mMonth = r3.count || 0
-        } catch { /* worker_meals table may not exist */ }
+        } catch {}
 
-        // Issues counts (table may not exist yet)
+        // Issues
         let iToday = 0, iWeek = 0, iMonth = 0
         try {
           const r1 = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('created_at', todayStr)
@@ -135,9 +150,9 @@ export default function Dashboard() {
           iWeek = r2.count || 0
           const r3 = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('created_at', monthStart)
           iMonth = r3.count || 0
-        } catch { /* issues table may not exist */ }
+        } catch {}
 
-        // Shifts counts (table may not exist yet)
+        // Shifts
         let sToday = 0, sWeek = 0, sMonth = 0
         try {
           const r1 = await supabase.from('schedule_shifts').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).eq('shift_date', todayStr)
@@ -146,7 +161,7 @@ export default function Dashboard() {
           sWeek = r2.count || 0
           const r3 = await supabase.from('schedule_shifts').select('*', { count: 'exact', head: true }).eq('location_id', user!.location_id).gte('shift_date', monthStart).lte('shift_date', todayStr)
           sMonth = r3.count || 0
-        } catch { /* schedule_shifts table may not exist */ }
+        } catch {}
 
         setReportData({
           todayMeals: mToday, weekMeals: mWeek, monthMeals: mMonth,
@@ -154,18 +169,11 @@ export default function Dashboard() {
           todayShiftsCount: sToday, weekShiftsCount: sWeek, monthShiftsCount: sMonth,
         })
 
-        // ─── Owner Command Center extras ─────────────────
         // Open tasks per worker
         try {
-          const { data: openTasks } = await supabase
-            .from('worker_tasks')
-            .select('assigned_to')
-            .eq('is_completed', false)
+          const { data: openTasks } = await supabase.from('worker_tasks').select('assigned_to').eq('is_completed', false)
           if (openTasks && openTasks.length > 0) {
-            const { data: allProfiles } = await supabase
-              .from('profiles')
-              .select('id, full_name')
-              .eq('is_active', true)
+            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name').eq('is_active', true)
             const countMap: Record<string, number> = {}
             openTasks.forEach(t => { if (t.assigned_to) countMap[t.assigned_to] = (countMap[t.assigned_to] || 0) + 1 })
             const result = Object.entries(countMap).map(([id, count]) => ({
@@ -176,57 +184,55 @@ export default function Dashboard() {
           }
         } catch {}
 
-        // Checklist progress today
+        // Recent issues (3 for pulse)
         try {
-          const { data: checkData } = await supabase
-            .from('checklist_logs')
-            .select('is_done')
-            .gte('created_at', todayStr)
-          if (checkData) {
-            setChecklistProgress({
-              total: checkData.length,
-              done: checkData.filter((c: any) => c.is_done).length,
-            })
-          }
-        } catch {}
-
-        // Recent issues (last 5)
-        try {
-          const { data: issueData } = await supabase
-            .from('issues')
-            .select('id, title, status, created_at')
-            .order('created_at', { ascending: false })
-            .limit(5)
+          const { data: issueData } = await supabase.from('issues').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(3)
           if (issueData) setRecentIssues(issueData)
         } catch {}
 
-        // Today's losses
+        // ALL issues this month (for summary)
         try {
-          const { data: lossData } = await supabase
-            .from('waste_logs')
-            .select('item_name')
-            .gte('created_at', todayStr)
+          const { data: allIssueData } = await supabase.from('issues').select('id, title, status, created_at').eq('location_id', user!.location_id).gte('created_at', monthStart).order('created_at', { ascending: false })
+          if (allIssueData) setAllIssues(allIssueData)
+        } catch {}
+
+        // Today's losses (for pulse)
+        try {
+          const { data: lossData } = await supabase.from('waste_logs').select('item_name, quantity, created_at').gte('created_at', todayStr)
           if (lossData) {
-            setTodayLosses({
-              count: lossData.length,
-              names: lossData.slice(0, 3).map((l: any) => l.item_name),
-            })
+            setTodayLosses({ count: lossData.length, names: lossData.slice(0, 3).map((l: any) => l.item_name) })
           }
         } catch {}
 
-        // Recent WOKI TALKIE commands (last 3)
+        // ALL losses this month (for summary)
         try {
-          const { data: cmdData } = await supabase
-            .from('woki_messages')
-            .select('transcription, text_content, created_at')
-            .eq('sender_id', user!.id)
-            .order('created_at', { ascending: false })
-            .limit(3)
-          if (cmdData) {
-            setRecentCommands(cmdData.map((c: any) => ({
-              transcription: c.transcription || c.text_content || '',
-              created_at: c.created_at,
-            })))
+          const { data: allLossData } = await supabase.from('waste_logs').select('item_name, quantity, created_at').eq('location_id', user!.location_id).gte('created_at', monthStart).order('created_at', { ascending: false })
+          if (allLossData) setAllLosses(allLossData)
+        } catch {}
+
+        // Worker hours this month + rates (umowa zlecenie)
+        // Stawki: Yurii 35 PLN/h, reszta 29 PLN/h
+        try {
+          const { data: monthClocks } = await supabase
+            .from('clock_logs')
+            .select('worker_id, hours_worked')
+            .eq('location_id', user!.location_id)
+            .gte('clock_date', monthStart)
+            .not('hours_worked', 'is', null)
+
+          if (monthClocks && monthClocks.length > 0) {
+            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name').eq('is_active', true)
+            const hoursMap: Record<string, number> = {}
+            monthClocks.forEach(c => {
+              if (c.worker_id) hoursMap[c.worker_id] = (hoursMap[c.worker_id] || 0) + (c.hours_worked || 0)
+            })
+            const result = Object.entries(hoursMap).map(([id, hours]) => {
+              const name = allProfiles?.find(p => p.id === id)?.full_name || '?'
+              const isYurii = name.toLowerCase().includes('yurii')
+              const rate = isYurii ? 35 : 29
+              return { name, hours: Math.round(hours * 10) / 10, rate, cost: Math.round(hours * rate) }
+            }).sort((a, b) => b.hours - a.hours)
+            setWorkerHours(result)
           }
         } catch {}
       }
@@ -241,7 +247,6 @@ export default function Dashboard() {
       const today = format(now, 'yyyy-MM-dd')
       const reminders: string[] = []
 
-      // Temperature reminders (only for kitchen/manager/owner)
       if (role === 'kitchen' || role === 'manager' || role === 'owner') {
         const { data: todayLogs } = await supabase
           .from('temperature_logs')
@@ -258,7 +263,6 @@ export default function Dashboard() {
           reminders.push('🌡️ Pora na pomiary temperatur — zmiana WIECZORNA!')
         }
 
-        // Sunday cleaning
         if (day === 0) {
           const weekNum = getWeekNumber(now)
           const { data: cleaningLogs } = await supabase
@@ -268,7 +272,7 @@ export default function Dashboard() {
             .eq('location_id', user!.location_id)
             .limit(1)
           if (!cleaningLogs || cleaningLogs.length === 0) {
-            reminders.push('🧹 Niedziela — czas na tygodniowe sprzątanie!')
+            reminders.push('🧹 Niedziela — czas na tygodniowe sprzatanie!')
           }
         }
       }
@@ -276,7 +280,6 @@ export default function Dashboard() {
       setShowReminder(reminders.length > 0 ? reminders.join('\n') : null)
     }
     checkReminders()
-
     const interval = setInterval(checkReminders, 30 * 60 * 1000)
     return () => clearInterval(interval)
   }, [user])
@@ -289,19 +292,19 @@ export default function Dashboard() {
     return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
   }
 
-  // ─── Belt / rank system ─────────────────────────────────────
+  // Belt system
   const BELT_LEVELS = [
-    { min: 0,   label: 'Żółty pas',       color: 'text-yellow-600',  bg: 'bg-yellow-50 border-yellow-300',  chefBg: 'bg-yellow-400' },
-    { min: 10,  label: 'Pomarańczowy pas', color: 'text-orange-600',  bg: 'bg-orange-50 border-orange-300',  chefBg: 'bg-orange-400' },
-    { min: 25,  label: 'Zielony pas',     color: 'text-green-700',   bg: 'bg-green-50 border-green-300',    chefBg: 'bg-green-500' },
-    { min: 50,  label: 'Niebieski pas',   color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-300',      chefBg: 'bg-blue-500' },
-    { min: 80,  label: 'Brązowy pas',     color: 'text-amber-800',   bg: 'bg-amber-50 border-amber-300',    chefBg: 'bg-amber-700' },
-    { min: 120, label: 'Czarny pas',      color: 'text-gray-900',    bg: 'bg-gray-100 border-gray-800',     chefBg: 'bg-gray-800' },
+    { min: 0,   label: 'Zolty pas',       color: 'text-yellow-600', bg: 'bg-yellow-50 border-yellow-200', chefBg: 'bg-yellow-400' },
+    { min: 10,  label: 'Pomaranczowy pas', color: 'text-orange-600', bg: 'bg-orange-50 border-orange-200', chefBg: 'bg-orange-400' },
+    { min: 25,  label: 'Zielony pas',     color: 'text-green-700',  bg: 'bg-green-50 border-green-200',   chefBg: 'bg-green-500' },
+    { min: 50,  label: 'Niebieski pas',   color: 'text-blue-600',   bg: 'bg-blue-50 border-blue-200',     chefBg: 'bg-blue-500' },
+    { min: 80,  label: 'Brazowy pas',     color: 'text-amber-800',  bg: 'bg-amber-50 border-amber-200',   chefBg: 'bg-amber-700' },
+    { min: 120, label: 'Czarny pas',      color: 'text-gray-900',   bg: 'bg-gray-100 border-gray-300',    chefBg: 'bg-gray-800' },
   ]
 
   function getRank(name: string, stars: number) {
     const n = name.toLowerCase()
-    if (n.includes('jakub')) return { icon: '🥷', label: 'NINJA', color: 'text-gray-900', bg: 'bg-gray-900/5 border-gray-800', chefBg: '' }
+    if (n.includes('jakub')) return { icon: '🥷', label: 'NINJA', color: 'text-gray-900', bg: 'bg-gray-50 border-gray-200', chefBg: '' }
     const effectiveStars = n.includes('yurii') ? stars + 10 : stars
     let belt = BELT_LEVELS[0]
     for (const level of BELT_LEVELS) {
@@ -315,50 +318,55 @@ export default function Dashboard() {
   const today = format(new Date(), 'EEEE, d MMMM', { locale: pl })
   const rank = getRank(user.full_name, starCount)
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 pb-8">
-      <div className="max-w-lg mx-auto space-y-5">
+  // Quick action modules
+  const quickActionMods = roleConfig.quickActions
+    .map(href => roleConfig.modules.find(m => m.href === href))
+    .filter(Boolean) as ModuleConfig[]
 
-        {/* ─── Header z rolą ─────────────────────────── */}
+  // Checklist progress for quick action badge
+  const checkDone = checklistProgress?.done || 0
+  const checkTotal = checklistProgress?.total || 0
+
+  // Total open tasks (for owner pulse)
+  const totalOpenTasks = tasksByWorker.reduce((s, w) => s + w.count, 0)
+
+  return (
+    <div className="min-h-screen bg-stone-50 p-4 pb-24">
+      <div className="max-w-lg mx-auto space-y-4">
+
+        {/* ─── Header ─────────────────────────────── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${roleConfig.gradientFrom} ${roleConfig.gradientTo} flex items-center justify-center text-2xl shadow-lg`}>
+            <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${roleConfig.gradientFrom} ${roleConfig.gradientTo} flex items-center justify-center text-xl shadow-sm`}>
               {roleConfig.icon}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">
-                {role === 'owner' ? 'Owner 🥷' : `Cześć, ${user.full_name.split(' ')[0]}! 👋`}
+              <h1 className="text-lg font-bold text-gray-900">
+                {role === 'owner' ? 'Czesc, Jakub' : `Czesc, ${user.full_name.split(' ')[0]}`}
               </h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${roleConfig.bgColor} ${roleConfig.color}`}>
-                  {roleConfig.labelPl}
-                </span>
-                <span className="text-gray-400 text-xs">{user.location_name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{user.location_name}</span>
+                <span className="text-gray-200">·</span>
+                <span className="text-xs text-gray-400 capitalize">{today}</span>
               </div>
             </div>
           </div>
-          <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500 px-3 py-2">
+          <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500 px-2 py-2">
             Wyloguj
           </button>
         </div>
 
-        {/* Data */}
-        <p className="text-gray-500 text-sm -mt-2 ml-15">{today}</p>
-
-        {/* ─── Reminder banner ───────────────────────── */}
+        {/* ─── Reminder banner ──────────────────── */}
         {showReminder && (
-          <div className="rounded-2xl bg-red-50 border-2 border-red-200 p-4">
+          <div className="rounded-2xl bg-red-50 border border-red-200 p-3">
             {showReminder.split('\n').map((line, i) => (
-              <p key={i} className="text-red-700 font-bold text-sm">{line}</p>
+              <p key={i} className="text-red-700 font-semibold text-sm">{line}</p>
             ))}
           </div>
         )}
 
-        {/* (readiness report removed — use Sanepid module) */}
-
-        {/* ─── Clock IN/OUT widget (kontekstowy) ─────────── */}
+        {/* ─── Clock Widget (compact when working) ── */}
         <ClockWidget user={user} todayShifts={todayShifts} todayClock={todayClock} onUpdate={() => {
-          // Reload today clock logs
           const todayStr = format(new Date(), 'yyyy-MM-dd')
           supabase.from('clock_logs')
             .select('worker_id, clock_in, clock_out, breaks')
@@ -367,27 +375,152 @@ export default function Dashboard() {
             .then(({ data }) => { if (data) setTodayClock(data) })
         }} />
 
-        {/* ─── Today's Shift Widget (always for admin, hides after clock-in for workers) */}
+        {/* ─── Swap alert ───────────────────────── */}
+        {pendingSwaps > 0 && (
+          <Link href="/schedule" className="block rounded-2xl bg-amber-50 border border-amber-200 p-3.5 transition-all active:scale-[0.98]">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🔄</span>
+              <div>
+                <div className="text-sm font-semibold text-amber-800">
+                  {pendingSwaps} {pendingSwaps === 1 ? 'prosba' : 'prosby'} o zamiane zmian
+                </div>
+                <div className="text-xs text-amber-600">Kliknij zeby sprawdzic</div>
+              </div>
+            </div>
+          </Link>
+        )}
+
+        {/* ─── OWNER PULSE (only for admin) ─────── */}
+        {isAdmin && (
+          <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Co sie dzieje teraz
+            </h2>
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Checklist */}
+              <Link href="/checklist" className="bg-emerald-50 rounded-xl p-3 active:scale-[0.97] transition-transform">
+                <div className="text-xs text-gray-500">Checklist</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-lg font-bold text-gray-900">{checkDone}/{checkTotal || '–'}</span>
+                </div>
+                {checkTotal > 0 && (
+                  <div className="w-full bg-emerald-100 rounded-full h-1.5 mt-2">
+                    <div
+                      className={`h-1.5 rounded-full transition-all ${
+                        checkDone === checkTotal ? 'bg-emerald-500' : 'bg-amber-400'
+                      }`}
+                      style={{ width: `${checkTotal > 0 ? (checkDone / checkTotal * 100) : 0}%` }}
+                    />
+                  </div>
+                )}
+              </Link>
+
+              {/* Tasks */}
+              <Link href="/tasks" className="bg-amber-50 rounded-xl p-3 active:scale-[0.97] transition-transform">
+                <div className="text-xs text-gray-500">Otwarte zadania</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-lg font-bold text-gray-900">{totalOpenTasks || pendingTasks}</span>
+                </div>
+                {tasksByWorker.length > 0 && (
+                  <div className="mt-2 space-y-0.5">
+                    {tasksByWorker.slice(0, 2).map((w, i) => (
+                      <div key={i} className="flex justify-between text-[10px]">
+                        <span className="text-gray-500 truncate">{w.name}</span>
+                        <span className="text-amber-700 font-bold">{w.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Link>
+
+              {/* Losses */}
+              <Link href="/straty" className="bg-rose-50 rounded-xl p-3 active:scale-[0.97] transition-transform">
+                <div className="text-xs text-gray-500">Straty dzis</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-lg font-bold text-gray-900">{todayLosses.count}</span>
+                  <span className="text-xs text-gray-400">szt</span>
+                </div>
+                {todayLosses.names.length > 0 && (
+                  <div className="text-[10px] text-gray-400 mt-1 truncate">
+                    {todayLosses.names.join(', ')}
+                  </div>
+                )}
+              </Link>
+
+              {/* Issues */}
+              <Link href="/awarie" className="bg-orange-50 rounded-xl p-3 active:scale-[0.97] transition-transform">
+                <div className="text-xs text-gray-500">Awarie</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-lg font-bold text-gray-900">{reportData.todayIssues}</span>
+                  <span className="text-xs text-gray-400">dzis</span>
+                </div>
+                {recentIssues.length > 0 && (
+                  <div className="text-[10px] text-gray-400 mt-1 truncate">
+                    {recentIssues[0]?.title}
+                  </div>
+                )}
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Quick Actions (2 hero cards) ──────── */}
+        {!isAdmin && (
+          <div className="grid grid-cols-2 gap-3">
+            {quickActionMods.map(mod => {
+              const isCheck = mod.href === '/checklist'
+              const isTask = mod.href === '/tasks'
+              return (
+                <Link
+                  key={mod.href}
+                  href={mod.href}
+                  className={`block rounded-2xl border p-4 shadow-sm bg-white transition-all active:scale-[0.97] ${
+                    isTask && pendingTasks > 0 ? 'border-amber-300' : 'border-gray-200'
+                  }`}
+                >
+                  <span className="text-3xl">{mod.icon}</span>
+                  <div className="mt-2">
+                    <div className="text-sm font-bold text-gray-900">{mod.title}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {isCheck && checkTotal > 0
+                        ? `${checkDone}/${checkTotal} zrobione`
+                        : isTask && pendingTasks > 0
+                        ? `${pendingTasks} ${pendingTasks === 1 ? 'nowe' : 'nowych'}`
+                        : mod.subtitle
+                      }
+                    </div>
+                  </div>
+                  {isTask && pendingTasks > 0 && (
+                    <span className="absolute top-3 right-3 bg-amber-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                      {pendingTasks}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ─── Today's staff (admin always, worker pre-clock) */}
         {todayShifts.length > 0 && (isAdmin || !todayClock.find(c => c.worker_id === user.id)) && (
-          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
+          <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                👥 Kto dzisiaj pracuje
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Kto dzisiaj pracuje
               </h2>
-              <Link href="/schedule" className="text-xs text-brand-600 font-medium">
+              <Link href="/schedule" className="text-xs text-gray-400 font-medium">
                 Grafik →
               </Link>
             </div>
 
-            {/* Staffing alert */}
             {(() => {
               const kitchenCount = todayShifts.filter(s => s.department === 'kitchen').length
               const hallCount = todayShifts.filter(s => s.department === 'hall').length
               const understaffed = kitchenCount < minKitchen || hallCount < minHall
               if (!understaffed) return null
               return (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-2 text-xs font-bold text-red-700">
-                  ⚠️ Brak obsady! Kuchnia: {kitchenCount}/{minKitchen} | Sala: {hallCount}/{minHall}
+                <div className="bg-red-50 border border-red-200 rounded-xl p-2 text-xs font-semibold text-red-700">
+                  ⚠️ Brak obsady! Kuchnia: {kitchenCount}/{minKitchen} · Sala: {hallCount}/{minHall}
                 </div>
               )
             })()}
@@ -399,11 +532,11 @@ export default function Dashboard() {
                 const isKitchen = s.department === 'kitchen'
                 return (
                   <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-xl ${
-                    isKitchen ? 'bg-orange-50' : 'bg-blue-50'
-                  } ${isMe ? 'ring-2 ring-green-400' : ''}`}>
+                    isKitchen ? 'bg-orange-50/60' : 'bg-violet-50/60'
+                  } ${isMe ? 'ring-1 ring-emerald-300' : ''}`}>
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold ${
-                        isKitchen ? 'bg-orange-500' : 'bg-blue-500'
+                        isKitchen ? 'bg-orange-400' : 'bg-violet-400'
                       }`}>
                         {isKitchen ? 'KU' : 'SA'}
                       </span>
@@ -413,16 +546,16 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400">
-                        {s.start_time?.slice(0,5)}-{s.end_time?.slice(0,5)}
+                        {s.start_time?.slice(0,5)}–{s.end_time?.slice(0,5)}
                       </span>
                       {clock?.clock_in && !clock?.clock_out && (
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="W pracy" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       )}
                       {clock?.clock_out && (
-                        <span className="text-[10px] text-green-600 font-bold">OK</span>
+                        <span className="text-[10px] text-emerald-600 font-bold">OK</span>
                       )}
                       {!clock && (
-                        <span className="w-2 h-2 rounded-full bg-gray-300" title="Nie clockowal" />
+                        <span className="w-2 h-2 rounded-full bg-gray-200" />
                       )}
                     </div>
                   </div>
@@ -432,255 +565,205 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ─── Swap alert ───────────────────────────── */}
-        {pendingSwaps > 0 && (
-          <Link href="/schedule" className="block rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 hover:shadow-md transition-all">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🔄</span>
-              <div>
-                <div className="text-sm font-bold text-amber-800">
-                  {pendingSwaps} {pendingSwaps === 1 ? 'prosba' : 'prosby'} o zamiane zmian
-                </div>
-                <div className="text-xs text-amber-600">Kliknij zeby sprawdzic</div>
-              </div>
-            </div>
-          </Link>
-        )}
-
-        {/* ─── Moduły per rola ───────────────────────── */}
-        <div className="space-y-3">
-          {roleConfig.modules.map(mod => {
-            // Special handling for tasks — show pending count
-            const isTaskMod = mod.href === '/tasks'
-            const hasPending = isTaskMod && pendingTasks > 0
-
-            return (
-              <Link
-                key={mod.href}
-                href={mod.href}
-                className={`block card border-2 ${mod.borderColor} ${mod.bgColor} hover:shadow-md transition-all active:scale-98 ${hasPending ? 'ring-2 ring-amber-300 animate-pulse-slow' : ''}`}
-              >
-                <div className="flex items-center gap-4">
-                  <span className="text-4xl">{mod.icon}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-bold text-gray-900">{mod.title}</h2>
+        {/* ─── Module Sections (grouped) ──────────── */}
+        <div className="space-y-4">
+          {roleConfig.sections.map((section, si) => (
+            <div key={si}>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+                {section.title}
+              </h3>
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm divide-y divide-gray-100">
+                {section.items.map((mod, mi) => {
+                  const isTask = mod.href === '/tasks'
+                  const hasPending = isTask && pendingTasks > 0
+                  return (
+                    <Link
+                      key={mi}
+                      href={mod.href}
+                      className="flex items-center gap-3.5 px-4 py-3.5 transition-colors active:bg-gray-50"
+                    >
+                      <span className="text-2xl w-8 text-center">{mod.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900">{mod.title}</div>
+                        <div className="text-xs text-gray-400 truncate">{mod.subtitle}</div>
+                      </div>
                       {hasPending && (
-                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                        <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                           {pendingTasks}
                         </span>
                       )}
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      {isTaskMod && pendingTasks > 0
-                        ? `Masz ${pendingTasks} ${pendingTasks === 1 ? 'zadanie' : pendingTasks < 5 ? 'zadania' : 'zadań'} do wykonania!`
-                        : mod.subtitle
-                      }
-                    </p>
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
+                      <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* ─── Rank + Stars ──────────────────────────── */}
-        <Link href="/stars" className={`block card border-2 hover:shadow-md transition-shadow ${rank.bg}`}>
+        {/* ─── Rank + Stars ───────────────────────── */}
+        <Link href="/stars" className={`block rounded-2xl border bg-white shadow-sm p-4 transition-all active:scale-[0.98] ${rank.bg}`}>
           <div className="flex items-center gap-3">
             {rank.chefBg ? (
-              <div className={`w-12 h-12 rounded-xl ${rank.chefBg} flex items-center justify-center`}>
-                <span className="text-2xl">👨‍🍳</span>
+              <div className={`w-11 h-11 rounded-xl ${rank.chefBg} flex items-center justify-center`}>
+                <span className="text-lg">👨‍🍳</span>
               </div>
             ) : (
-              <span className="text-4xl">{rank.icon}</span>
+              <span className="text-3xl">{rank.icon}</span>
             )}
             <div className="flex-1">
-              <div className="font-bold text-sm">{user.full_name}</div>
-              <div className={`text-xs font-bold ${rank.color}`}>{rank.label}</div>
+              <div className="font-semibold text-sm text-gray-900">{user.full_name}</div>
+              <div className={`text-xs font-semibold ${rank.color}`}>{rank.label}</div>
             </div>
             <div className="text-right">
-              <div className="text-lg font-bold">⭐ {starCount}</div>
-              <div className="text-xs text-gray-400">{isAdmin ? 'Zarządzaj' : 'Pochwały'}</div>
+              <div className="text-lg font-bold text-gray-900">⭐ {starCount}</div>
+              <div className="text-xs text-gray-400">{isAdmin ? 'Zarzadzaj' : 'Pochwaly'}</div>
             </div>
           </div>
         </Link>
 
-        {/* ─── Raport operacyjny (admin only) ─────────── */}
+        {/* ─── Podsumowanie miesiaca (klikalna kafelka) ── */}
         {isAdmin && (
-          <div className="rounded-2xl bg-white border-2 border-gray-200 p-4 space-y-3">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              Raport
-            </h2>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="text-xs font-bold text-gray-400">Dzis</div>
-              <div className="text-xs font-bold text-gray-400">Tydzien</div>
-              <div className="text-xs font-bold text-gray-400">Miesiac</div>
-            </div>
-            {/* Meals */}
-            <div className="bg-orange-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🍽️</span>
-                <span className="text-sm font-bold text-gray-700">Posilki pracownikow</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-bold text-orange-600">{reportData.todayMeals}</div>
-                  <div className="text-[10px] text-gray-400">Dzis</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-orange-600">{reportData.weekMeals}</div>
-                  <div className="text-[10px] text-gray-400">Tydzien</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-orange-600">{reportData.monthMeals}</div>
-                  <div className="text-[10px] text-gray-400">Miesiac</div>
+          <div className="rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setSummaryOpen(!summaryOpen)}
+              className="w-full flex items-center justify-between px-4 py-4 active:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📊</span>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-gray-900">Podsumowanie miesiaca</div>
+                  <div className="text-xs text-gray-400">
+                    Usterki · Straty · Godziny · Koszty
+                  </div>
                 </div>
               </div>
-            </div>
-            {/* Issues */}
-            <div className="bg-red-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">🔧</span>
-                <span className="text-sm font-bold text-gray-700">Usterki</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-bold text-red-600">{reportData.todayIssues}</div>
-                  <div className="text-[10px] text-gray-400">Dzis</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-red-600">{reportData.weekIssues}</div>
-                  <div className="text-[10px] text-gray-400">Tydzien</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-red-600">{reportData.monthIssues}</div>
-                  <div className="text-[10px] text-gray-400">Miesiac</div>
-                </div>
-              </div>
-            </div>
-            {/* Shifts */}
-            <div className="bg-blue-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">📅</span>
-                <span className="text-sm font-bold text-gray-700">Zmiany</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-bold text-blue-600">{reportData.todayShiftsCount}</div>
-                  <div className="text-[10px] text-gray-400">Dzis</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-blue-600">{reportData.weekShiftsCount}</div>
-                  <div className="text-[10px] text-gray-400">Tydzien</div>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-blue-600">{reportData.monthShiftsCount}</div>
-                  <div className="text-[10px] text-gray-400">Miesiac</div>
-                </div>
-              </div>
-            </div>
-            <p className="text-[10px] text-gray-300 text-center">Wiecej opcji raportowania wkrotce</p>
-          </div>
-        )}
+              <svg className={`w-5 h-5 text-gray-400 transition-transform ${summaryOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
 
-        {/* ─── Owner Command Center widgets ─────────── */}
-        {isAdmin && (
-          <div className="space-y-3">
-            {/* Tasks per worker */}
-            {tasksByWorker.length > 0 && (
-              <Link href="/tasks" className="block rounded-2xl bg-white border-2 border-amber-200 p-4 space-y-3 hover:shadow-md transition-all">
-                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  📋 Otwarte zadania
-                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-                    {tasksByWorker.reduce((s, w) => s + w.count, 0)}
-                  </span>
-                </h2>
-                <div className="space-y-1.5">
-                  {tasksByWorker.map((w, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">{w.name}</span>
-                      <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{w.count}</span>
+            {summaryOpen && (
+              <div className="border-t border-gray-100 px-4 pb-4 space-y-4">
+
+                {/* ── Godziny pracownikow + stawki ── */}
+                <div className="pt-3">
+                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Godziny i koszty (umowa zlecenie)
+                  </div>
+                  {workerHours.length > 0 ? (
+                    <div className="space-y-2">
+                      {workerHours.map((w, i) => (
+                        <div key={i} className="bg-stone-50 rounded-xl px-3.5 py-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-900">{w.name}</span>
+                            <span className="text-sm font-bold text-gray-900">{w.cost} zl</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs text-gray-400">{w.rate} zl/h · umowa zlecenie</span>
+                            <span className="text-xs text-gray-500">{w.hours}h w tym miesiacu</span>
+                          </div>
+                          {/* Progress bar (max ~176h = 22 days * 8h) */}
+                          <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                            <div
+                              className="h-1.5 rounded-full bg-blue-400"
+                              style={{ width: `${Math.min(100, (w.hours / 176) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {/* Total */}
+                      <div className="flex items-center justify-between bg-gray-900 text-white rounded-xl px-3.5 py-3 mt-1">
+                        <span className="text-sm font-semibold">Razem</span>
+                        <div className="text-right">
+                          <div className="text-sm font-bold">{workerHours.reduce((s, w) => s + w.cost, 0)} zl</div>
+                          <div className="text-[10px] text-gray-400">{workerHours.reduce((s, w) => s + w.hours, 0).toFixed(1)}h</div>
+                        </div>
+                      </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="text-xs text-gray-300 text-center py-3">Brak danych o godzinach</div>
+                  )}
                 </div>
-              </Link>
-            )}
 
-            {/* Checklist progress */}
-            {checklistProgress && checklistProgress.total > 0 && (
-              <Link href="/checklist" className="block rounded-2xl bg-white border-2 border-emerald-200 p-4 hover:shadow-md transition-all">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-bold text-gray-900">✅ Checklist dzisiaj</h2>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    checklistProgress.done === checklistProgress.total
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {checklistProgress.done}/{checklistProgress.total}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all ${
-                      checklistProgress.done === checklistProgress.total ? 'bg-green-500' : 'bg-amber-500'
-                    }`}
-                    style={{ width: `${checklistProgress.total > 0 ? (checklistProgress.done / checklistProgress.total * 100) : 0}%` }}
-                  />
-                </div>
-              </Link>
-            )}
-
-            {/* Recent issues */}
-            {recentIssues.length > 0 && (
-              <Link href="/awarie" className="block rounded-2xl bg-white border-2 border-red-200 p-4 space-y-2 hover:shadow-md transition-all">
-                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  🔧 Ostatnie awarie
-                </h2>
-                {recentIssues.slice(0, 3).map(issue => (
-                  <div key={issue.id} className="flex items-center justify-between">
-                    <span className="text-xs text-gray-600 truncate flex-1 mr-2">{issue.title}</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      issue.status === 'resolved' ? 'bg-green-100 text-green-700'
-                        : issue.status === 'in_progress' ? 'bg-amber-100 text-amber-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {issue.status === 'resolved' ? 'OK' : issue.status === 'in_progress' ? 'W toku' : 'Nowa'}
-                    </span>
+                {/* ── Wszystkie usterki ── */}
+                <div>
+                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Usterki w tym miesiacu ({allIssues.length})
                   </div>
-                ))}
-              </Link>
-            )}
-
-            {/* Today's losses */}
-            {todayLosses.count > 0 && (
-              <Link href="/straty" className="block rounded-2xl bg-white border-2 border-rose-200 p-4 hover:shadow-md transition-all">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-gray-900">📉 Straty dzisiaj</h2>
-                  <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{todayLosses.count}</span>
+                  {allIssues.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {allIssues.map((issue) => (
+                        <div key={issue.id} className="flex items-center justify-between bg-red-50/60 rounded-xl px-3.5 py-2.5">
+                          <div className="flex-1 min-w-0 mr-3">
+                            <div className="text-sm text-gray-800 truncate">{issue.title}</div>
+                            <div className="text-[10px] text-gray-400">
+                              {new Date(issue.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            issue.status === 'resolved' ? 'bg-emerald-100 text-emerald-700'
+                              : issue.status === 'in_progress' ? 'bg-amber-100 text-amber-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {issue.status === 'resolved' ? 'OK' : issue.status === 'in_progress' ? 'W toku' : 'Nowa'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-300 text-center py-3">Brak usterek</div>
+                  )}
                 </div>
-                {todayLosses.names.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {todayLosses.names.join(', ')}{todayLosses.count > 3 ? ` + ${todayLosses.count - 3} wiecej` : ''}
-                  </p>
-                )}
-              </Link>
-            )}
 
-            {/* Recent WOKI TALKIE commands */}
-            {recentCommands.length > 0 && (
-              <Link href="/woki-talkie" className="block rounded-2xl bg-white border-2 border-indigo-200 p-4 space-y-2 hover:shadow-md transition-all">
-                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  📻 Ostatnie polecenia
-                </h2>
-                {recentCommands.map((cmd, i) => (
-                  <div key={i} className="flex items-start justify-between gap-2">
-                    <p className="text-xs text-gray-600 truncate flex-1">{cmd.transcription}</p>
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                      {format(new Date(cmd.created_at), 'HH:mm')}
-                    </span>
+                {/* ── Wszystkie straty ── */}
+                <div>
+                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Straty w tym miesiacu ({allLosses.length})
                   </div>
-                ))}
-              </Link>
+                  {allLosses.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {allLosses.map((loss, i) => (
+                        <div key={i} className="flex items-center justify-between bg-rose-50/60 rounded-xl px-3.5 py-2.5">
+                          <div className="flex-1 min-w-0 mr-3">
+                            <div className="text-sm text-gray-800">{loss.item_name}</div>
+                            <div className="text-[10px] text-gray-400">
+                              {new Date(loss.created_at).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
+                            </div>
+                          </div>
+                          {loss.quantity > 0 && (
+                            <span className="text-xs font-semibold text-rose-600">{loss.quantity} szt</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-300 text-center py-3">Brak strat</div>
+                  )}
+                </div>
+
+                {/* ── Posilki i zmiany (mini) ── */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-orange-50/60 rounded-xl p-2.5 text-center">
+                    <div className="text-[10px] text-gray-400">Posilki</div>
+                    <div className="text-lg font-bold text-gray-900">{reportData.monthMeals}</div>
+                    <div className="text-[10px] text-gray-400">w miesiacu</div>
+                  </div>
+                  <div className="bg-violet-50/60 rounded-xl p-2.5 text-center">
+                    <div className="text-[10px] text-gray-400">Zmiany</div>
+                    <div className="text-lg font-bold text-gray-900">{reportData.monthShiftsCount}</div>
+                    <div className="text-[10px] text-gray-400">w miesiacu</div>
+                  </div>
+                  <div className="bg-red-50/60 rounded-xl p-2.5 text-center">
+                    <div className="text-[10px] text-gray-400">Usterki</div>
+                    <div className="text-lg font-bold text-gray-900">{reportData.monthIssues}</div>
+                    <div className="text-[10px] text-gray-400">w miesiacu</div>
+                  </div>
+                </div>
+
+              </div>
             )}
           </div>
         )}
@@ -690,9 +773,7 @@ export default function Dashboard() {
   )
 }
 
-// ─── Clock Widget Component ──────────────────────────────────
-// Break limits based on Polish labor law (adapted for restaurant shifts):
-// <6h → 0 min (not mandatory), 6-8h → 15 min, 8-12h → 30 min, 12h+ → 45 min
+// ─── Clock Widget ──────────────────────────────────────────
 function calcBreakLimit(shiftHours: number): number {
   if (shiftHours < 6) return 0
   if (shiftHours < 8) return 15
@@ -737,10 +818,7 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
   const msToStart = shiftStart.getTime() - now.getTime()
   const msToEnd = shiftEnd.getTime() - now.getTime()
 
-  // Show Clock IN: 1h before shift start, not yet clocked in
   const showClockIn = !myClock?.clock_in && msToStart < 60 * 60 * 1000 && msToEnd > 0
-
-  // Show Clock OUT: clocked in but not out, anytime during shift or after
   const showClockOut = myClock?.clock_in && !myClock?.clock_out
 
   async function handleClockIn() {
@@ -764,7 +842,6 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
     const clockIn = new Date(myClock.clock_in)
     const clockOut = new Date()
     const hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60)
-
     const { error } = await supabase.from('clock_logs').update({
       clock_out: clockOut.toISOString(),
       hours_worked: hours,
@@ -783,20 +860,20 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
     return `${h}h ${m}m`
   }
 
-  // Not clocked in yet + within 1h window → show big green button
+  // CLOCK IN button
   if (showClockIn) {
     return (
-      <div className="rounded-2xl bg-white border-2 border-green-200 p-4 space-y-3">
+      <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs text-gray-400 font-medium">Twoja zmiana</div>
+            <div className="text-xs text-gray-400">Twoja zmiana</div>
             <div className="text-sm font-bold text-gray-900">
               {myShift.start_time.slice(0,5)} — {myShift.end_time.slice(0,5)}
             </div>
           </div>
           <div className="text-right">
             <div className="text-xs text-gray-400">Start za</div>
-            <div className="text-sm font-bold text-green-600">
+            <div className="text-sm font-bold text-emerald-600">
               {msToStart > 0 ? fmtCountdown(msToStart) : 'TERAZ'}
             </div>
           </div>
@@ -804,15 +881,15 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
         <button
           onClick={handleClockIn}
           disabled={saving}
-          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl text-lg shadow-lg active:scale-98 disabled:opacity-50"
+          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl text-lg shadow-sm active:scale-[0.97] disabled:opacity-50 transition-all"
         >
-          {saving ? '...' : '🟢 CLOCK IN'}
+          {saving ? '...' : 'Rozpocznij zmiane'}
         </button>
       </div>
     )
   }
 
-  // Currently working → show elapsed + Break + Clock OUT
+  // WORKING — compact view with break/clock out
   if (showClockOut && myClock?.clock_in) {
     const clockInTime = new Date(myClock.clock_in)
     const elapsed = now.getTime() - clockInTime.getTime()
@@ -831,11 +908,9 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
       setSaving(true)
       const currentBreaks = [...(myClock.breaks || [])]
       if (onBreak) {
-        // End active break
         const idx = currentBreaks.findIndex(b => !b.end)
         if (idx >= 0) currentBreaks[idx] = { ...currentBreaks[idx], end: new Date().toISOString() }
       } else {
-        // Start new break
         currentBreaks.push({ start: new Date().toISOString(), end: null })
       }
       const totalMin = sumBreakMinutes(currentBreaks, new Date())
@@ -848,75 +923,63 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
       onUpdate()
     }
 
-    // ═════ ON BREAK VIEW ═════
+    // ON BREAK
     if (onBreak && activeBreak) {
       const breakStart = new Date(activeBreak.start)
       const breakElapsed = Math.floor((now.getTime() - breakStart.getTime()) / 60000)
       return (
-        <div className="rounded-2xl bg-white border-2 border-orange-300 p-4 space-y-3">
+        <div className="rounded-2xl bg-white border border-amber-200 p-4 space-y-3 shadow-sm">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-orange-500 font-medium flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" /> NA PRZERWIE
-              </div>
-              <div className="text-sm font-bold text-gray-900">
-                Od {breakStart.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-xs font-semibold text-amber-600">Na przerwie</span>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-400">Przerwa</div>
-              <div className={`text-lg font-bold ${overLimit ? 'text-red-600' : 'text-orange-600'}`}>
-                {breakElapsed}m{breakLimit > 0 ? ` / ${breakLimit}m` : ''}
-              </div>
+            <div className={`text-base font-bold ${overLimit ? 'text-red-600' : 'text-amber-600'}`}>
+              {breakElapsed}m{breakLimit > 0 ? ` / ${breakLimit}m` : ''}
             </div>
           </div>
           {overLimit && (
-            <p className="text-[10px] text-red-500 text-center font-medium">
-              ⚠️ Przekroczony limit przerwy ({breakLimit}min wg przepisow dla {shiftHours.toFixed(0)}h zmiany)
+            <p className="text-[10px] text-red-500 text-center">
+              ⚠️ Przekroczony limit przerwy
             </p>
           )}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleBreakToggle}
               disabled={saving}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl text-sm active:scale-[0.97] disabled:opacity-50 transition-all"
             >
-              {saving ? '...' : '✅ KONIEC PRZERWY'}
+              {saving ? '...' : 'Koniec przerwy'}
             </button>
             <button
               onClick={handleClockOut}
               disabled={saving}
-              className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+              className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 rounded-xl text-sm active:scale-[0.97] disabled:opacity-50 transition-all"
             >
-              🔴 CLOCK OUT
+              Zakoncz zmiane
             </button>
           </div>
         </div>
       )
     }
 
-    // ═════ WORKING VIEW ═════
+    // WORKING
     return (
-      <div className={`rounded-2xl bg-white border-2 p-4 space-y-3 ${showOutSoon ? 'border-red-300' : 'border-green-300'}`}>
+      <div className={`rounded-2xl bg-white border p-4 space-y-3 shadow-sm ${showOutSoon ? 'border-amber-300' : 'border-gray-200'}`}>
         <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs text-gray-400 font-medium flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> W pracy
-            </div>
-            <div className="text-sm font-bold text-gray-900">
-              Od {clockInTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-medium text-gray-500">
+              W pracy od {clockInTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+            </span>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-gray-400">Przepracowane</div>
-            <div className="text-lg font-bold text-green-600">{fmtCountdown(elapsed)}</div>
-          </div>
+          <span className="text-sm font-bold text-gray-900">{fmtCountdown(elapsed)}</span>
         </div>
 
         {breakLimit > 0 && usedMinutes > 0 && (
-          <div className="flex items-center justify-between bg-orange-50 rounded-xl px-3 py-1.5">
-            <span className="text-[10px] text-orange-600 font-medium">☕ Wykorzystana przerwa</span>
-            <span className={`text-xs font-bold ${overLimit ? 'text-red-600' : 'text-orange-700'}`}>
+          <div className="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-1.5">
+            <span className="text-[10px] text-amber-600">Wykorzystana przerwa</span>
+            <span className={`text-xs font-bold ${overLimit ? 'text-red-600' : 'text-amber-700'}`}>
               {usedMinutes}m / {breakLimit}m
             </span>
           </div>
@@ -926,23 +989,25 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
           <button
             onClick={handleBreakToggle}
             disabled={saving || overLimit}
-            className="bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50"
+            className="bg-amber-100 hover:bg-amber-200 text-amber-700 font-semibold py-2.5 rounded-xl text-sm active:scale-[0.97] disabled:opacity-40 transition-all"
           >
-            {saving ? '...' : '☕ PRZERWA'}
+            {saving ? '...' : '☕ Przerwa'}
           </button>
           <button
             onClick={handleClockOut}
             disabled={saving}
-            className={`text-white font-bold py-3 rounded-xl text-sm shadow-md active:scale-98 disabled:opacity-50 ${
-              showOutSoon ? 'bg-red-500 hover:bg-red-600 animate-pulse-slow' : 'bg-gray-700 hover:bg-gray-800'
+            className={`font-semibold py-2.5 rounded-xl text-sm active:scale-[0.97] disabled:opacity-50 transition-all ${
+              showOutSoon
+                ? 'bg-red-100 hover:bg-red-200 text-red-700'
+                : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
             }`}
           >
-            🔴 CLOCK OUT
+            Zakoncz zmiane
           </button>
         </div>
 
         {showOutSoon && (
-          <p className="text-[10px] text-red-500 text-center font-medium">
+          <p className="text-[10px] text-amber-600 text-center">
             Zmiana konczy sie za {fmtCountdown(msToEnd)}
           </p>
         )}
@@ -950,20 +1015,23 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
     )
   }
 
-  // Already clocked out → show summary
+  // DONE for today
   if (myClock?.clock_in && myClock?.clock_out) {
     const inTime = new Date(myClock.clock_in)
     const outTime = new Date(myClock.clock_out)
     const hours = (outTime.getTime() - inTime.getTime()) / (1000 * 60 * 60)
     return (
-      <div className="rounded-2xl bg-gray-50 border-2 border-gray-200 p-3">
+      <div className="rounded-2xl bg-white border border-gray-200 p-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <div className="text-xs text-gray-500">
-            ✅ Dzisiaj przepracowane: <span className="font-bold text-gray-800">{hours.toFixed(1)}h</span>
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-500">✓</span>
+            <span className="text-xs text-gray-500">
+              Dzisiaj: <span className="font-bold text-gray-700">{hours.toFixed(1)}h</span>
+            </span>
           </div>
-          <div className="text-[10px] text-gray-400">
-            {inTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} — {outTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-          </div>
+          <span className="text-[10px] text-gray-400">
+            {inTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })} – {outTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+          </span>
         </div>
       </div>
     )
