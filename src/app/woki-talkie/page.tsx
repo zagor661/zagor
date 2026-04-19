@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
-import { isAdminRole } from '@/lib/roles'
+import { isAdminRole, normalizeRole } from '@/lib/roles'
 import supabase from '@/lib/supabase'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -37,6 +37,7 @@ type ViewMode = 'command' | 'history'
 export default function WokiTalkiePage() {
   const { user, loading } = useUser()
   const isAdmin = user ? isAdminRole(user.role) : false
+  const canUseWoki = user ? (isAdmin || normalizeRole(user.role) === 'kitchen') : false
 
   // View
   const [view, setView] = useState<ViewMode>('command')
@@ -396,7 +397,7 @@ export default function WokiTalkiePage() {
   // ─── Render ───────────────────────────────────────────────
   if (loading || !user) return null
 
-  if (!isAdmin) {
+  if (!canUseWoki) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="card text-center max-w-sm">
