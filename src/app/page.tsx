@@ -25,6 +25,13 @@ export default function Dashboard() {
     todayShiftsCount: number; weekShiftsCount: number; monthShiftsCount: number;
   }>({ todayMeals: 0, weekMeals: 0, monthMeals: 0, todayIssues: 0, weekIssues: 0, monthIssues: 0, todayShiftsCount: 0, weekShiftsCount: 0, monthShiftsCount: 0 })
 
+  // Owner Command Center data
+  const [tasksByWorker, setTasksByWorker] = useState<{ name: string; count: number }[]>([])
+  const [checklistProgress, setChecklistProgress] = useState<{ done: number; total: number } | null>(null)
+  const [recentIssues, setRecentIssues] = useState<{ id: string; title: string; status: string; created_at: string }[]>([])
+  const [todayLosses, setTodayLosses] = useState<{ count: number; names: string[] }>({ count: 0, names: [] })
+  const [recentCommands, setRecentCommands] = useState<{ transcription: string; created_at: string }[]>([])
+
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
   const isAdmin = user ? isAdminRole(user.role) : false
@@ -146,6 +153,82 @@ export default function Dashboard() {
           todayIssues: iToday, weekIssues: iWeek, monthIssues: iMonth,
           todayShiftsCount: sToday, weekShiftsCount: sWeek, monthShiftsCount: sMonth,
         })
+
+        // ─── Owner Command Center extras ─────────────────
+        // Open tasks per worker
+        try {
+          const { data: openTasks } = await supabase
+            .from('worker_tasks')
+            .select('assigned_to')
+            .eq('is_completed', false)
+          if (openTasks && openTasks.length > 0) {
+            const { data: allProfiles } = await supabase
+              .from('profiles')
+              .select('id, full_name')
+              .eq('is_active', true)
+            const countMap: Record<string, number> = {}
+            openTasks.forEach(t => { if (t.assigned_to) countMap[t.assigned_to] = (countMap[t.assigned_to] || 0) + 1 })
+            const result = Object.entries(countMap).map(([id, count]) => ({
+              name: allProfiles?.find(p => p.id === id)?.full_name || '?',
+              count,
+            })).sort((a, b) => b.count - a.count)
+            setTasksByWorker(result)
+          }
+        } catch {}
+
+        // Checklist progress today
+        try {
+          const { data: checkData } = await supabase
+            .from('checklist_logs')
+            .select('is_done')
+            .gte('created_at', todayStr)
+          if (checkData) {
+            setChecklistProgress({
+              total: checkData.length,
+              done: checkData.filter((c: any) => c.is_done).length,
+            })
+          }
+        } catch {}
+
+        // Recent issues (last 5)
+        try {
+          const { data: issueData } = await supabase
+            .from('issues')
+            .select('id, title, status, created_at')
+            .order('created_at', { ascending: false })
+            .limit(5)
+          if (issueData) setRecentIssues(issueData)
+        } catch {}
+
+        // Today's losses
+        try {
+          const { data: lossData } = await supabase
+            .from('waste_logs')
+            .select('item_name')
+            .gte('created_at', todayStr)
+          if (lossData) {
+            setTodayLosses({
+              count: lossData.length,
+              names: lossData.slice(0, 3).map((l: any) => l.item_name),
+            })
+          }
+        } catch {}
+
+        // Recent WOKI TALKIE commands (last 3)
+        try {
+          const { data: cmdData } = await supabase
+            .from('woki_messages')
+            .select('transcription, text_content, created_at')
+            .eq('sender_id', user!.id)
+            .order('created_at', { ascending: false })
+            .limit(3)
+          if (cmdData) {
+            setRecentCommands(cmdData.map((c: any) => ({
+              transcription: c.transcription || c.text_content || '',
+              created_at: c.created_at,
+            })))
+          }
+        } catch {}
       }
     }
     loadData()
@@ -497,6 +580,108 @@ export default function Dashboard() {
               </div>
             </div>
             <p className="text-[10px] text-gray-300 text-center">Wiecej opcji raportowania wkrotce</p>
+          </div>
+        )}
+
+        {/* ─── Owner Command Center widgets ─────────── */}
+        {isAdmin && (
+          <div className="space-y-3">
+            {/* Tasks per worker */}
+            {tasksByWorker.length > 0 && (
+              <Link href="/tasks" className="block rounded-2xl bg-white border-2 border-amber-200 p-4 space-y-3 hover:shadow-md transition-all">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  📋 Otwarte zadania
+                  <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
+                    {tasksByWorker.reduce((s, w) => s + w.count, 0)}
+                  </span>
+                </h2>
+                <div className="space-y-1.5">
+                  {tasksByWorker.map((w, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-700">{w.name}</span>
+                      <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{w.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </Link>
+            )}
+
+            {/* Checklist progress */}
+            {checklistProgress && checklistProgress.total > 0 && (
+              <Link href="/checklist" className="block rounded-2xl bg-white border-2 border-emerald-200 p-4 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-bold text-gray-900">✅ Checklist dzisiaj</h2>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    checklistProgress.done === checklistProgress.total
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-orange-100 text-orange-700'
+                  }`}>
+                    {checklistProgress.done}/{checklistProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all ${
+                      checklistProgress.done === checklistProgress.total ? 'bg-green-500' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${checklistProgress.total > 0 ? (checklistProgress.done / checklistProgress.total * 100) : 0}%` }}
+                  />
+                </div>
+              </Link>
+            )}
+
+            {/* Recent issues */}
+            {recentIssues.length > 0 && (
+              <Link href="/awarie" className="block rounded-2xl bg-white border-2 border-red-200 p-4 space-y-2 hover:shadow-md transition-all">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  🔧 Ostatnie awarie
+                </h2>
+                {recentIssues.slice(0, 3).map(issue => (
+                  <div key={issue.id} className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600 truncate flex-1 mr-2">{issue.title}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      issue.status === 'resolved' ? 'bg-green-100 text-green-700'
+                        : issue.status === 'in_progress' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {issue.status === 'resolved' ? 'OK' : issue.status === 'in_progress' ? 'W toku' : 'Nowa'}
+                    </span>
+                  </div>
+                ))}
+              </Link>
+            )}
+
+            {/* Today's losses */}
+            {todayLosses.count > 0 && (
+              <Link href="/straty" className="block rounded-2xl bg-white border-2 border-rose-200 p-4 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-gray-900">📉 Straty dzisiaj</h2>
+                  <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{todayLosses.count}</span>
+                </div>
+                {todayLosses.names.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {todayLosses.names.join(', ')}{todayLosses.count > 3 ? ` + ${todayLosses.count - 3} wiecej` : ''}
+                  </p>
+                )}
+              </Link>
+            )}
+
+            {/* Recent WOKI TALKIE commands */}
+            {recentCommands.length > 0 && (
+              <Link href="/woki-talkie" className="block rounded-2xl bg-white border-2 border-indigo-200 p-4 space-y-2 hover:shadow-md transition-all">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  📻 Ostatnie polecenia
+                </h2>
+                {recentCommands.map((cmd, i) => (
+                  <div key={i} className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-gray-600 truncate flex-1">{cmd.transcription}</p>
+                    <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                      {format(new Date(cmd.created_at), 'HH:mm')}
+                    </span>
+                  </div>
+                ))}
+              </Link>
+            )}
           </div>
         )}
 

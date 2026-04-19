@@ -146,13 +146,31 @@ const MOD_WOKI_TALKIE: ModuleConfig = {
   bgColor: 'bg-gradient-to-br from-indigo-50 to-purple-50',
 }
 
+const MOD_FOOD_COST: ModuleConfig = {
+  href: '/food-cost',
+  icon: '💰',
+  title: 'Food Cost',
+  subtitle: 'Przepisy, składniki, kalkulacja kosztów',
+  borderColor: 'border-lime-200',
+  bgColor: 'bg-gradient-to-br from-lime-50 to-green-50',
+}
+
 const MOD_RAPORTY: ModuleConfig = {
   href: '/sanepid/raport',
   icon: '📊',
-  title: 'Raporty',
-  subtitle: 'Raporty dzienne i tygodniowe',
+  title: 'Raporty Sanepid',
+  subtitle: 'Raporty HACCP dzienne i tygodniowe',
   borderColor: 'border-cyan-200',
   bgColor: 'bg-cyan-50',
+}
+
+const MOD_DAILY_REPORT: ModuleConfig = {
+  href: '/daily-report',
+  icon: '📈',
+  title: 'Raport dzienny',
+  subtitle: 'Podsumowanie zmiany — checklist, obecnosc, zadania',
+  borderColor: 'border-blue-200',
+  bgColor: 'bg-gradient-to-br from-blue-50 to-cyan-50',
 }
 
 const MOD_USTAWIENIA: ModuleConfig = {
@@ -177,7 +195,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystość, straty, HACCP',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE, MOD_FOOD_COST],
   },
   hall: {
     key: 'hall',
@@ -201,7 +219,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pełen dostęp + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST],
   },
   owner: {
     key: 'owner',
@@ -213,7 +231,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podgląd wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_WOKI_TALKIE, MOD_USTAWIENIA],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_USTAWIENIA],
   },
 }
 
