@@ -80,13 +80,29 @@ export default function WokiTalkiePage() {
   // ─── Load workers ──────────────────────────────────────────
   const loadWorkers = useCallback(async () => {
     if (!user) return
-    const { data } = await supabase
+    // Try with preferred_language first, fallback without it
+    let { data, error: err } = await supabase
       .from('profiles')
       .select('id, full_name, role, preferred_language')
       .eq('location_id', user.location_id)
       .eq('is_active', true)
       .order('full_name')
-    if (data) setWorkers(data)
+
+    if (err || !data) {
+      // Fallback — preferred_language column may not exist yet
+      const res = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .eq('location_id', user.location_id)
+        .eq('is_active', true)
+        .order('full_name')
+      data = (res.data || []).map(w => ({ ...w, preferred_language: 'pl' }))
+    }
+
+    if (data) {
+      console.log('[WOKI] Workers loaded:', data.length, data.map(w => w.full_name))
+      setWorkers(data)
+    }
   }, [user])
 
   // ─── Load history ─────────────────────────────────────────
@@ -271,12 +287,21 @@ export default function WokiTalkiePage() {
     try {
       let dispatched = 0
 
+      console.log('[WOKI] Dispatching tasks. Workers:', workers.length, 'Tasks:', extractedTasks.length)
+
       for (const task of extractedTasks) {
-        // Find worker by name (case-insensitive partial match)
-        const worker = workers.find(w =>
-          w.full_name.toLowerCase().includes(task.worker_name.toLowerCase()) ||
-          task.worker_name.toLowerCase().includes(w.full_name.toLowerCase())
-        )
+        // Find worker by name — flexible matching (first name, full name, partial)
+        const taskName = task.worker_name.toLowerCase().trim()
+        const worker = workers.find(w => {
+          const fullName = w.full_name.toLowerCase()
+          const firstName = fullName.split(' ')[0]
+          return fullName === taskName
+            || firstName === taskName
+            || fullName.includes(taskName)
+            || taskName.includes(firstName)
+        })
+
+        console.log(`[WOKI] Task "${task.task_text_pl}" → worker_name="${task.worker_name}" → matched:`, worker?.full_name || 'NONE', 'broadcast:', task.is_broadcast)
 
         if (task.is_broadcast) {
           // Broadcast — create task for each worker
@@ -285,7 +310,7 @@ export default function WokiTalkiePage() {
               ? task.task_text_translated
               : task.task_text_pl
 
-            await supabase.from('worker_tasks').insert({
+            const { error: insertErr } = await supabase.from('worker_tasks').insert({
               location_id: user.location_id,
               title: taskTitle,
               description: task.task_text_pl !== taskTitle
@@ -296,7 +321,8 @@ export default function WokiTalkiePage() {
               status: 'new',
               is_private: false,
             })
-            dispatched++
+            if (insertErr) console.error('[WOKI] Insert error (broadcast):', insertErr.message)
+            else dispatched++
           }
         } else if (worker) {
           // Single worker task
@@ -304,7 +330,7 @@ export default function WokiTalkiePage() {
             ? task.task_text_translated
             : task.task_text_pl
 
-          await supabase.from('worker_tasks').insert({
+          const { error: insertErr } = await supabase.from('worker_tasks').insert({
             location_id: user.location_id,
             title: taskTitle,
             description: task.task_text_pl !== taskTitle
@@ -315,7 +341,10 @@ export default function WokiTalkiePage() {
             status: 'new',
             is_private: false,
           })
-          dispatched++
+          if (insertErr) console.error('[WOKI] Insert error:', insertErr.message)
+          else dispatched++
+        } else {
+          console.warn(`[WOKI] No worker match for "${task.worker_name}" — task skipped`)
         }
       }
 
@@ -349,7 +378,10 @@ export default function WokiTalkiePage() {
         transcription: transcription,
       })
 
-      setSuccess(`Wyslano ${dispatched} ${dispatched === 1 ? 'zadanie' : dispatched < 5 ? 'zadania' : 'zadan'}!`)
+      const skipped = extractedTasks.length - dispatched
+      const msg = `Wyslano ${dispatched} ${dispatched === 1 ? 'zadanie' : dispatched < 5 ? 'zadania' : 'zadan'}!`
+        + (skipped > 0 ? ` (${skipped} pominieto — nie znaleziono pracownika)` : '')
+      setSuccess(msg)
       setShowPreview(false)
       setTranscription('')
       setExtractedTasks([])
