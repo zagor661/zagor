@@ -25,11 +25,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing rows, locationId or userId' }, { status: 400 })
     }
 
-    // Get all active profiles for this location
+    // Get all active profiles (profiles table has no location_id column)
     const { data: profiles, error: profErr } = await supabase
       .from('profiles')
       .select('id, full_name, role')
-      .eq('location_id', locationId)
       .eq('is_active', true)
 
     if (profErr || !profiles) {
