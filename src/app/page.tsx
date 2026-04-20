@@ -367,15 +367,17 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ─── Clock Widget (compact when working) ── */}
-        <ClockWidget user={user} todayShifts={todayShifts} todayClock={todayClock} onUpdate={() => {
-          const todayStr = format(new Date(), 'yyyy-MM-dd')
-          supabase.from('clock_logs')
-            .select('worker_id, clock_in, clock_out, breaks')
-            .eq('location_id', user.location_id)
-            .eq('clock_date', todayStr)
-            .then(({ data }) => { if (data) setTodayClock(data) })
-        }} />
+        {/* ─── Clock Widget (only for workers, not owner/manager) ── */}
+        {!isAdmin && (
+          <ClockWidget user={user} todayShifts={todayShifts} todayClock={todayClock} onUpdate={() => {
+            const todayStr = format(new Date(), 'yyyy-MM-dd')
+            supabase.from('clock_logs')
+              .select('worker_id, clock_in, clock_out, breaks')
+              .eq('location_id', user.location_id)
+              .eq('clock_date', todayStr)
+              .then(({ data }) => { if (data) setTodayClock(data) })
+          }} />
+        )}
 
         {/* ─── Swap alert ───────────────────────── */}
         {pendingSwaps > 0 && (
