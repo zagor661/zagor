@@ -128,7 +128,8 @@ const DAY_NAMES = ['Pon', 'Wt', 'Sr', 'Czw', 'Pt', 'Sob', 'Ndz']
 
 export default function SchedulePage() {
   const { user, loading } = useUser()
-  const isAdmin = user ? isAdminRole(user.role) : false
+  const isYurii = user?.full_name?.toLowerCase().includes('yurii') ?? false
+  const isAdmin = user ? (isAdminRole(user.role) || isYurii) : false
 
   // ─── State ──────────────────────────────────────────────
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
@@ -655,12 +656,86 @@ export default function SchedulePage() {
     setTimeout(() => setSuccess(''), 5000)
   }
 
+  // ─── Import schedule from Google Sheet data ────────────────
+  async function handleImportGoogleSheet() {
+    if (!user) return
+    setSaving(true)
+    setError('')
+
+    // April 2026 schedule from GRAFIK_WOKI_WOKI Google Sheet
+    const sheetData: { date: string; workers: string[] }[] = [
+      { date: '2026-04-01', workers: ['PIOTR', 'YURII', 'ZUZIA'] },
+      { date: '2026-04-02', workers: ['YURII', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-03', workers: ['MACIEK', 'YURII', 'KASIA'] },
+      { date: '2026-04-04', workers: ['MACIEK', 'MICHAŁ', 'KASIA'] },
+      { date: '2026-04-05', workers: ['MICHAŁ', 'PIOTR', 'KASIA'] },
+      { date: '2026-04-06', workers: ['YURII', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-07', workers: ['YURII', 'MACIEK', 'ZUZIA'] },
+      { date: '2026-04-08', workers: ['MACIEK', 'KASIA', 'PIOTR'] },
+      { date: '2026-04-09', workers: ['PIOTR', 'KASIA', 'YURII'] },
+      { date: '2026-04-10', workers: ['YURII', 'MACIEK', 'ZUZIA'] },
+      { date: '2026-04-11', workers: ['YURII', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-12', workers: ['MACIEK', 'PIOTR', 'KASIA'] },
+      { date: '2026-04-13', workers: ['PIOTR', 'MACIEK', 'ZUZIA'] },
+      { date: '2026-04-14', workers: ['YURII', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-15', workers: ['YURII', 'MACIEK', 'KASIA'] },
+      { date: '2026-04-16', workers: ['MACIEK', 'MICHAŁ', 'ZUZIA'] },
+      { date: '2026-04-17', workers: ['MICHAŁ', 'PIOTR', 'KASIA'] },
+      { date: '2026-04-18', workers: ['YURII', 'KASIA'] },
+      { date: '2026-04-19', workers: ['YURII', 'MICHAŁ', 'KASIA'] },
+      { date: '2026-04-20', workers: ['YURII', 'MICHAŁ', 'ZUZIA'] },
+      { date: '2026-04-21', workers: ['YURII', 'MICHAŁ', 'ZUZIA'] },
+      { date: '2026-04-22', workers: ['MICHAŁ', 'PIOTR', 'KASIA'] },
+      { date: '2026-04-23', workers: ['PIOTR', 'MICHAŁ', 'KASIA'] },
+      { date: '2026-04-24', workers: ['PIOTR', 'YURII', 'ZUZIA'] },
+      { date: '2026-04-25', workers: ['MICHAŁ', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-26', workers: ['YURII', 'MICHAŁ', 'KASIA'] },
+      { date: '2026-04-27', workers: ['YURII', 'PIOTR', 'KASIA'] },
+      { date: '2026-04-28', workers: ['MICHAŁ', 'YURII', 'ZUZIA'] },
+      { date: '2026-04-29', workers: ['MICHAŁ', 'PIOTR', 'ZUZIA'] },
+      { date: '2026-04-30', workers: ['YURII', 'MICHAŁ', 'KASIA'] },
+    ]
+
+    const rows = sheetData.map(d => ({
+      date: d.date,
+      start_time: '11:00',
+      end_time: '21:00',
+      workers: d.workers,
+    }))
+
+    try {
+      const res = await fetch('/api/schedule/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows,
+          locationId: user.location_id,
+          userId: user.id,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Import error')
+
+      let msg = `Zaimportowano ${data.inserted} zmian z Google Sheets (kwiecien 2026).`
+      if (data.unmatched?.length) {
+        msg += ` Nie znaleziono: ${data.unmatched.join(', ')}`
+      }
+      setSuccess(msg)
+      setCurrentMonth(new Date(2026, 3, 1)) // April 2026
+      loadData()
+    } catch (e: any) {
+      setError('Import error: ' + e.message)
+    }
+    setSaving(false)
+    setTimeout(() => setSuccess(''), 8000)
+  }
+
   // ─── Approve schedule ─────────────────────────────────────
   async function handleApprove() {
     if (!user || !approval) return
     setSaving(true)
 
-    const isManager = normalizeRole(user.role) === 'manager' || normalizeRole(user.role) === 'owner'
+    const isManager = normalizeRole(user.role) === 'manager' || normalizeRole(user.role) === 'owner' || isYurii
     const isHeadChef = workers.find(w => w.id === user.id)?.is_head_chef
 
     const updates: any = {}
@@ -1393,6 +1468,18 @@ export default function SchedulePage() {
             >
               {saving ? 'Generowanie...' : 'Wygeneruj grafik'}
             </button>
+
+            {/* Google Sheet import — owner only */}
+            {normalizeRole(user?.role || '') === 'owner' && (
+              <button
+                onClick={handleImportGoogleSheet}
+                disabled={saving}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+              >
+                <span>📊</span>
+                {saving ? 'Importowanie...' : 'Sync z Google Sheets (kwiecien)'}
+              </button>
+            )}
           </div>
         )}
 

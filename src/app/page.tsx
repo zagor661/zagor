@@ -869,17 +869,23 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
   const myShift = todayShifts.find(s => s.worker_id === user.id)
   const myClock = todayClock.find(c => c.worker_id === user.id)
 
-  if (!myShift) return null
-
   const todayStr = format(now, 'yyyy-MM-dd')
-  const [sh, sm] = myShift.start_time.split(':').map(Number)
-  const [eh, em] = myShift.end_time.split(':').map(Number)
+
+  // Default shift times (fallback when no shift in schedule)
+  const defaultStart = '11:00'
+  const defaultEnd = '21:00'
+  const startTime = myShift?.start_time || defaultStart
+  const endTime = myShift?.end_time || defaultEnd
+
+  const [sh, sm] = startTime.split(':').map(Number)
+  const [eh, em] = endTime.split(':').map(Number)
   const shiftStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm)
   const shiftEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), eh, em)
   const msToStart = shiftStart.getTime() - now.getTime()
   const msToEnd = shiftEnd.getTime() - now.getTime()
 
-  const showClockIn = !myClock?.clock_in && msToStart < 60 * 60 * 1000 && msToEnd > 0
+  // Always show clock in — even without shift in schedule
+  const showClockIn = !myClock?.clock_in
   const showClockOut = myClock?.clock_in && !myClock?.clock_out
 
   async function handleClockIn() {
@@ -929,7 +935,7 @@ function ClockWidget({ user, todayShifts, todayClock, onUpdate }: {
           <div>
             <div className="text-xs text-gray-400">Twoja zmiana</div>
             <div className="text-sm font-bold text-gray-900">
-              {myShift.start_time.slice(0,5)} — {myShift.end_time.slice(0,5)}
+              {startTime.slice(0,5)} — {endTime.slice(0,5)}
             </div>
           </div>
           <div className="text-right">

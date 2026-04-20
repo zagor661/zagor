@@ -181,6 +181,24 @@ const MOD_WORKER_PROFILES: ModuleConfig = {
   bgColor: 'bg-blue-50',
 }
 
+const MOD_FAKTURY: ModuleConfig = {
+  href: '/faktury',
+  icon: '🧾',
+  title: 'Faktury',
+  subtitle: 'Skanuj, porownuj ceny, archiwum',
+  borderColor: 'border-blue-200',
+  bgColor: 'bg-blue-50',
+}
+
+const MOD_DOSTAWY: ModuleConfig = {
+  href: '/sanepid/dostawy',
+  icon: '📦',
+  title: 'Dostawy',
+  subtitle: 'Przyjmij dostawe + nota Sanepid',
+  borderColor: 'border-teal-200',
+  bgColor: 'bg-teal-50',
+}
+
 const MOD_USTAWIENIA: ModuleConfig = {
   href: '/settings',
   icon: '⚙️',
@@ -212,7 +230,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystosc, straty, HACCP',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE, MOD_FOOD_COST],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_DOSTAWY, MOD_FAKTURY],
     quickActions: ['/checklist', '/tasks'],
     sections: [
       {
@@ -222,6 +240,10 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       {
         title: 'Bezpieczenstwo zywnosci',
         items: [MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY],
+      },
+      {
+        title: 'Dostawy i faktury',
+        items: [MOD_DOSTAWY, MOD_FAKTURY],
       },
       {
         title: 'Komunikacja',
@@ -274,7 +296,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_WORKER_PROFILES],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES],
     quickActions: ['/daily-report', '/tasks'],
     sections: [
       {
@@ -286,8 +308,8 @@ export const ROLES: Record<RoleType, RoleConfig> = {
         items: [MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_RAPORTY],
       },
       {
-        title: 'Operacje',
-        items: [MOD_CHECKLIST, MOD_AWARIE, MOD_FOOD_COST],
+        title: 'Operacje i finanse',
+        items: [MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FOOD_COST, MOD_FAKTURY],
       },
     ],
     bottomNav: [
@@ -308,7 +330,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_WORKER_PROFILES, MOD_USTAWIENIA],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_USTAWIENIA],
     quickActions: ['/daily-report', '/woki-talkie'],
     sections: [
       {
@@ -321,11 +343,15 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       },
       {
         title: 'Finanse i koszty',
-        items: [MOD_FOOD_COST, MOD_DAILY_REPORT],
+        items: [MOD_DOSTAWY, MOD_FOOD_COST, MOD_FAKTURY, MOD_DAILY_REPORT],
       },
       {
-        title: 'Operacje',
-        items: [MOD_TASKS, MOD_AWARIE, MOD_USTAWIENIA],
+        title: 'Komunikacja',
+        items: [MOD_WOKI_TALKIE, MOD_TASKS, MOD_AWARIE],
+      },
+      {
+        title: 'System',
+        items: [MOD_USTAWIENIA],
       },
     ],
     bottomNav: [

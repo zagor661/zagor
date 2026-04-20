@@ -113,6 +113,7 @@ export default function BreakdownsPage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = user ? isAdminRole(user.role) : false
+  const isOwner = user?.full_name?.toLowerCase().includes('jakub') ?? false
 
   useEffect(() => {
     if (authLoading || !user) return
@@ -367,7 +368,7 @@ export default function BreakdownsPage() {
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                {...(!isOwner ? { capture: 'environment' as const } : {})}
                 onChange={handlePhoto}
                 className="hidden"
                 id="photo-input"
@@ -379,7 +380,7 @@ export default function BreakdownsPage() {
                   disabled={photoBusy}
                   className="w-full py-6 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 text-sm hover:border-brand-400 hover:text-brand-600 transition"
                 >
-                  {photoBusy ? 'Wczytuję...' : '📷 Kliknij aby zrobić zdjęcie'}
+                  {photoBusy ? 'Wczytuję...' : isOwner ? '📷 Zrob zdjecie lub wybierz z galerii' : '📷 Kliknij aby zrobić zdjęcie'}
                 </button>
               ) : (
                 <div className="relative">
