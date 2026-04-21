@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
-import { notifyNewTask } from '@/lib/pushClient'
+import { notifyNewTask, notifyTaskCompleted } from '@/lib/pushClient'
 
 type TaskStatus = 'new' | 'read' | 'in_progress' | 'done' | 'problem'
 
@@ -161,6 +161,14 @@ export default function TasksPage() {
     }
 
     await supabase.from('worker_tasks').update(updates).eq('id', taskId)
+
+    // Push notifications
+    if (newStatus === 'done' && user) {
+      const task = tasks.find(t => t.id === taskId)
+      if (task) {
+        notifyTaskCompleted(user.location_id, user.full_name, task.title)
+      }
+    }
 
     // If problem — push to Google Sheets
     if (newStatus === 'problem') {

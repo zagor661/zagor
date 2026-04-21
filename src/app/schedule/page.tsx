@@ -10,6 +10,7 @@ import {
   parseISO, isWithinInterval, startOfWeek, addDays
 } from 'date-fns'
 import { pl } from 'date-fns/locale'
+import { notifySwapRequest, notifySwapAccepted } from '@/lib/pushClient'
 
 // ─── Types ──────────────────────────────────────────────────
 interface Shift {
@@ -874,6 +875,9 @@ export default function SchedulePage() {
     })
     if (err) setError(err.message)
     else {
+      // Push notification to target worker
+      const targetShiftDate = targetShift?.shift_date || ''
+      notifySwapRequest(user.location_id, targetShift.worker_id, user.full_name, targetShiftDate)
       setSuccess('Prosba o zamiane wyslana!')
       setSwapMyShiftId(''); setSwapTargetShiftId(''); setSwapTargetWorker(''); setSwapMessage('')
       loadData()
@@ -889,7 +893,15 @@ export default function SchedulePage() {
       target_accepted_at: new Date().toISOString(),
     }).eq('id', swapId)
     if (err) setError(err.message)
-    else { setSuccess('Zaakceptowano zamiane — czeka na Menagera'); loadData() }
+    else {
+      // Notify requester that swap was accepted
+      const swap = swapRequests.find(sr => sr.id === swapId)
+      if (swap && user) {
+        const shiftDate = shifts.find(s => s.id === swap.requester_shift_id)?.shift_date || ''
+        notifySwapAccepted(user.location_id, swap.requester_id, user.full_name, shiftDate)
+      }
+      setSuccess('Zaakceptowano zamiane — czeka na Menagera'); loadData()
+    }
     setTimeout(() => setSuccess(''), 3000)
   }
 

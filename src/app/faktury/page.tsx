@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+import { notifyInvoiceScanned } from '@/lib/pushClient'
 import supabase from '@/lib/supabase'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
@@ -144,6 +145,13 @@ export default function FakturyPage() {
         if (a.lower > 0) msgs.push(`${a.lower} produktow TANSZYCH niz food cost`)
         alert('Alerty cenowe:\n' + msgs.join('\n'))
       }
+
+      // Push notification about new invoice
+      notifyInvoiceScanned(
+        user.location_id,
+        result.invoice.supplier_name || 'Dostawca',
+        result.invoice.total_gross?.toFixed(2) || '?'
+      )
 
       loadInvoices()
       setSelectedId(result.invoice.id)

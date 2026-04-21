@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+import { notifyDeliveryReceived, notifyDeliveryIssue } from '@/lib/pushClient'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 
@@ -168,6 +169,13 @@ export default function DostawyPage() {
     if (error) {
       alert('Blad: ' + error.message)
     } else {
+      // Push notification
+      if (!tempOk || !visualOk || rejected.trim()) {
+        notifyDeliveryIssue(user.location_id, supplierName,
+          !tempOk ? 'Temperatura NOK' : !visualOk ? 'Stan wizualny NOK' : 'Odrzucone produkty')
+      } else {
+        notifyDeliveryReceived(user.location_id, supplierName, user.full_name)
+      }
       // Reset form but keep scan result visible briefly
       if (!scanResult && !scanError) {
         resetForm()
