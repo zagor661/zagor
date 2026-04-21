@@ -30,7 +30,7 @@ interface InvoicePreview {
   gdrive_url: string | null
 }
 
-const SUPPLIERS = ['MAKRO', 'Coca-Cola HBC', 'Hurtownia lokalna', 'Dostawa warzywa/owoce', 'Kuchnia Swiata', 'Inna']
+const SUPPLIERS = ['Farutex', 'MAKRO', 'Pilarz', 'Jajka Agatka', 'Comimport', 'WOA', 'Inne']
 
 export default function DostawyPage() {
   const { user, loading } = useUser()

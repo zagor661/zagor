@@ -30,7 +30,7 @@ export function ServiceWorkerRegistration() {
           }
 
           // Save to server — read user from localStorage
-          const stored = localStorage.getItem('kitchen_user')
+          const stored = localStorage.getItem('kitchenops_user')
           if (stored) {
             const user = JSON.parse(stored)
             await fetch('/api/push/subscribe', {
