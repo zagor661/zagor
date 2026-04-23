@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
 // Food Cost reference prices (imported inline to avoid client-side import issues)
 const FOODCOST_REFERENCE: Record<string, number> = {}
@@ -162,7 +164,7 @@ Zasady:
     // 3. Save image to Supabase Storage
     let imageUrl: string | null = null
     const fileName = `invoices/${Date.now()}_${imageFile.name}`
-    const { error: storageErr } = await supabase.storage
+    const { error: storageErr } = await getSupabase().storage
       .from('worker-files')
       .upload(fileName, Buffer.from(bytes), {
         contentType: mimeType,
@@ -170,7 +172,7 @@ Zasady:
       })
 
     if (!storageErr) {
-      const { data: urlData } = supabase.storage.from('worker-files').getPublicUrl(fileName)
+      const { data: urlData } = getSupabase().storage.from('worker-files').getPublicUrl(fileName)
       imageUrl = urlData.publicUrl
     }
 
@@ -193,7 +195,7 @@ Zasady:
     }
 
     // 5. Save invoice to DB
-    const { data: invoice, error: invErr } = await supabase.from('invoices').insert({
+    const { data: invoice, error: invErr } = await getSupabase().from('invoices').insert({
       location_id: locationId,
       invoice_number: invoiceData.invoice_number,
       supplier_name: invoiceData.supplier_name || 'Nieznany',
@@ -241,7 +243,7 @@ Zasady:
         priceAlert = 'no_convert'
       }
 
-      const { data: savedItem } = await supabase.from('invoice_items').insert({
+      const { data: savedItem } = await getSupabase().from('invoice_items').insert({
         invoice_id: invoice.id,
         item_name: item.name,
         item_name_normalized: (item.name || '').toLowerCase().trim(),
