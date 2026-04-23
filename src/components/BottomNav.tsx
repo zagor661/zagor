@@ -6,7 +6,7 @@ import { ROLES, normalizeRole } from '@/lib/roles'
 import type { RoleType } from '@/lib/roles'
 
 export default function BottomNav() {
-  const { user } = useUser()
+  const { user } = useUser(false)
   const pathname = usePathname()
 
   if (!user) return null

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const payload: PushPayload = {
       title,
       body: msgBody,
-      icon: '/icon-192x192.png',
+      icon: '/icon-192.png',
       url: url || '/',
       tag: tag || 'kitchen-ops',
     }
