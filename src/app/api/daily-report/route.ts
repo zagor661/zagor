@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-const supabase = createClient(supabaseUrl, supabaseKey)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  )
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +21,7 @@ export async function GET(req: NextRequest) {
     // 1. Checklist completion
     let checklistDone = 0, checklistTotal = 0
     try {
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('checklist_logs')
         .select('is_done')
         .gte('created_at', date)
@@ -32,14 +35,14 @@ export async function GET(req: NextRequest) {
     // 2. Tasks summary
     let tasksCreated = 0, tasksCompleted = 0, tasksOpen = 0
     try {
-      const { count: created } = await supabase
+      const { count: created } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', date)
         .lt('created_at', nextDate)
       tasksCreated = created || 0
 
-      const { count: completed } = await supabase
+      const { count: completed } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
         .eq('is_completed', true)
@@ -47,7 +50,7 @@ export async function GET(req: NextRequest) {
         .lt('updated_at', nextDate)
       tasksCompleted = completed || 0
 
-      const { count: open } = await supabase
+      const { count: open } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
         .eq('is_completed', false)
@@ -57,13 +60,13 @@ export async function GET(req: NextRequest) {
     // 3. Attendance (clock logs)
     const attendance: { name: string; clock_in: string | null; clock_out: string | null; hours: number | null; breaks_min: number }[] = []
     try {
-      const { data: clockData } = await supabase
+      const { data: clockData } = await getSupabase()
         .from('clock_logs')
         .select('worker_id, clock_in, clock_out, hours_worked, total_break_minutes')
         .eq('clock_date', date)
 
       if (clockData && clockData.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await getSupabase()
           .from('profiles')
           .select('id, full_name')
           .in('id', clockData.map(c => c.worker_id))
@@ -83,7 +86,7 @@ export async function GET(req: NextRequest) {
     // 4. Issues/Awarie
     const issues: { title: string; status: string }[] = []
     try {
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('issues')
         .select('title, status')
         .gte('created_at', date)
@@ -94,7 +97,7 @@ export async function GET(req: NextRequest) {
     // 5. Waste/Straty
     const losses: { item_name: string; quantity: number; unit: string }[] = []
     try {
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('waste_logs')
         .select('item_name, quantity, unit')
         .gte('created_at', date)
@@ -105,7 +108,7 @@ export async function GET(req: NextRequest) {
     // 6. Meals
     let mealsCount = 0
     try {
-      const { count } = await supabase
+      const { count } = await getSupabase()
         .from('worker_meals')
         .select('*', { count: 'exact', head: true })
         .eq('meal_date', date)
@@ -115,7 +118,7 @@ export async function GET(req: NextRequest) {
     // 7. WOKI TALKIE commands
     let commandsCount = 0
     try {
-      const { count } = await supabase
+      const { count } = await getSupabase()
         .from('woki_messages')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', date)
@@ -126,7 +129,7 @@ export async function GET(req: NextRequest) {
     // 8. Temperature logs
     let tempMorning = false, tempEvening = false
     try {
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('temperature_logs')
         .select('shift')
         .eq('date', date)

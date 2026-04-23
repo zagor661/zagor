@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+}
 
 interface SheetRow {
   date: string       // 'YYYY-MM-DD'
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get all active profiles (profiles table has no location_id column)
-    const { data: profiles, error: profErr } = await supabase
+    const { data: profiles, error: profErr } = await getSupabase()
       .from('profiles')
       .select('id, full_name, role')
       .eq('is_active', true)
@@ -98,7 +100,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Delete existing shifts for this month at this location
-    const { error: delErr } = await supabase
+    const { error: delErr } = await getSupabase()
       .from('schedule_shifts')
       .delete()
       .eq('location_id', locationId)
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
     const batchSize = 50
     for (let i = 0; i < shifts.length; i += batchSize) {
       const batch = shifts.slice(i, i + batchSize)
-      const { error: insErr } = await supabase
+      const { error: insErr } = await getSupabase()
         .from('schedule_shifts')
         .insert(batch)
       if (insErr) {
