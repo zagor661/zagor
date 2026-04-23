@@ -139,7 +139,7 @@ export default function SetupWizard() {
       localStorage.setItem('kitchenops_login_time', Date.now().toString())
       localStorage.setItem('kitchenops_last_activity', Date.now().toString())
 
-      router.push('/')
+      router.push('/onboarding')
     } catch (err: any) {
       console.error('Setup error:', err)
       setError(err.message || 'Błąd podczas tworzenia lokacji')
@@ -486,7 +486,7 @@ export default function SetupWizard() {
             </button>
 
             <p className="text-center text-xs text-gray-400">
-              Następny krok: dodasz pracowników w Ustawieniach → Zespół
+              Następny krok: konfiguracja krok po kroku — zespół, sprzęt, checklist
             </p>
           </div>
         )}
