@@ -94,36 +94,28 @@ export default function SetupWizard() {
 
       if (locErr) throw locErr
 
-      // 2. Create owner profile
-      const { data: profile, error: profErr } = await supabase
-        .from('profiles')
-        .insert({
+      // 2. Create owner via API (handles auth.users + profiles)
+      const workerRes = await fetch('/api/add-worker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           full_name: ownerName.trim(),
-          email: ownerEmail.trim() || null,
-          role: 'owner',
           pin: ownerPin,
-          is_active: true,
-        })
-        .select('id')
-        .single()
+          role: 'owner',
+          location_id: loc.id,
+        }),
+      })
 
-      if (profErr) throw profErr
+      const workerData = await workerRes.json()
+      if (!workerRes.ok || !workerData.ok) throw new Error(workerData.error || 'Błąd tworzenia konta')
+
+      const profileId = workerData.id
 
       // 3. Update location with owner_id
       await supabase
         .from('locations')
-        .update({ owner_id: profile.id })
+        .update({ owner_id: profileId })
         .eq('id', loc.id)
-
-      // 4. Link user to location
-      await supabase
-        .from('user_locations')
-        .insert({
-          user_id: profile.id,
-          location_id: loc.id,
-          role: 'owner',
-          is_primary: true,
-        })
 
       // 5. Grant temp admin access if enabled
       if (enableSupport) {
@@ -136,7 +128,7 @@ export default function SetupWizard() {
 
       // 6. Auto-login as owner
       const userData = {
-        id: profile.id,
+        id: profileId,
         email: ownerEmail.trim() || '',
         full_name: ownerName.trim(),
         role: 'owner',
