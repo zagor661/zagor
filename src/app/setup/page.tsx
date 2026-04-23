@@ -15,6 +15,7 @@ import { ALL_MODULES, DEFAULT_ENABLED_MODULES, type RoleType } from '@/lib/roles
 const BUSINESS_TYPES = [
   { value: 'restaurant', label: 'Restauracja', icon: '🍽️' },
   { value: 'bar', label: 'Bar / Pub', icon: '🍺' },
+  { value: 'club', label: 'Club', icon: '🪩' },
   { value: 'cafe', label: 'Kawiarnia', icon: '☕' },
   { value: 'fastfood', label: 'Fast food', icon: '🍔' },
   { value: 'hotel', label: 'Hotel / Catering', icon: '🏨' },

@@ -2,23 +2,28 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
+import { ALL_MODULES } from '@/lib/roles'
 import supabase from '@/lib/supabase'
 
 // ============================================================
 // Onboarding Wizard — 5 steps after Setup
 // Step 1: Welcome + walkthrough of what KitchenOps does
-// Step 2: Add workers (name, role, PIN)
-// Step 3: Equipment (fridges, ovens, etc. for temperature & breakdowns)
+// Step 2: Add workers (name, role, PIN) + module selection per worker
+// Step 3: Equipment (fridges, ovens, etc.)
 // Step 4: Checklist & cleaning config
 // Step 5: Food Cost Excel link
 // ============================================================
 
 const ROLES = [
+  { value: 'owner', label: 'Właściciel', icon: '🥷', desc: 'Pełny dostęp do wszystkiego' },
+  { value: 'manager', label: 'Menager', icon: '👔', desc: 'Kierownik — raporty, zarządzanie' },
   { value: 'kitchen', label: 'Kuchnia', icon: '🍳', desc: 'Kucharz, pomoc kuchenna' },
   { value: 'hall', label: 'Sala', icon: '🍽️', desc: 'Kelner, hostess' },
   { value: 'bar', label: 'Bar', icon: '🍸', desc: 'Barman, barista' },
-  { value: 'manager', label: 'Menager', icon: '👔', desc: 'Kierownik zmiany' },
 ]
+
+// Modules that make sense per worker role
+const WORKER_MODULES = ALL_MODULES.filter(m => m.id !== '/settings')
 
 const EQUIPMENT_PRESETS = [
   { type: 'fridge', label: 'Lodówka', icon: '🧊', temp_min: 0, temp_max: 5 },
@@ -26,17 +31,6 @@ const EQUIPMENT_PRESETS = [
   { type: 'display_fridge', label: 'Witryna chłodnicza', icon: '🥗', temp_min: 0, temp_max: 7 },
   { type: 'oven', label: 'Piec', icon: '🔥', temp_min: 0, temp_max: 300 },
   { type: 'dishwasher', label: 'Zmywarka', icon: '🍽️', temp_min: 55, temp_max: 85 },
-]
-
-const BREAKDOWN_TYPE_PRESETS = [
-  'Sprzęt kuchenny',
-  'Chłodnictwo (lodówka / zamrażarka)',
-  'Wentylacja / klimatyzacja',
-  'Instalacja elektryczna',
-  'Instalacja wodno-kanalizacyjna',
-  'Nagłośnienie / oświetlenie',
-  'Meble / wyposażenie',
-  'POS / kasa',
 ]
 
 const DEFAULT_CHECKLIST = {
@@ -67,11 +61,12 @@ const DEFAULT_CLEANING_ZONES = [
   { name: 'Okna', frequency: 'co miesiąc' },
 ]
 
-interface NewWorker {
+interface AddedWorker {
+  id: string
   name: string
   role: string
   pin: string
-  position: string
+  modules: string[]
 }
 
 interface NewEquipment {
@@ -79,6 +74,16 @@ interface NewEquipment {
   type: string
   temp_min: number
   temp_max: number
+}
+
+// Default modules per role
+function defaultModulesForRole(role: string): string[] {
+  if (role === 'owner') return ALL_MODULES.map(m => m.id)
+  if (role === 'manager') return ['/checklist', '/tasks', '/schedule', '/meals', '/stars', '/worker', '/woki-talkie', '/awarie', '/sanepid', '/temperature', '/cleaning', '/straty', '/daily-report', '/food-cost', '/faktury']
+  if (role === 'kitchen') return ['/checklist', '/tasks', '/temperature', '/meals', '/stars', '/straty']
+  if (role === 'hall') return ['/checklist', '/tasks', '/meals', '/stars']
+  if (role === 'bar') return ['/checklist/bar', '/tasks', '/meals', '/stars']
+  return ['/checklist', '/tasks', '/meals']
 }
 
 const TOTAL_STEPS = 5
@@ -89,18 +94,20 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1)
 
   // Step 2: Workers
-  const [workers, setWorkers] = useState<NewWorker[]>([])
+  const [workers, setWorkers] = useState<AddedWorker[]>([])
   const [wName, setWName] = useState('')
   const [wRole, setWRole] = useState('kitchen')
   const [wPin, setWPin] = useState('')
   const [wPosition, setWPosition] = useState('')
   const [addingWorker, setAddingWorker] = useState(false)
+  // Module config for recently added worker
+  const [configuringWorker, setConfiguringWorker] = useState<AddedWorker | null>(null)
+  const [configModules, setConfigModules] = useState<Set<string>>(new Set())
 
   // Step 3: Equipment
   const [equipment, setEquipment] = useState<NewEquipment[]>([])
   const [eqName, setEqName] = useState('')
   const [eqType, setEqType] = useState('fridge')
-  const [savingEquipment, setSavingEquipment] = useState(false)
 
   // Step 4: Checklist + Cleaning
   const [morningItems, setMorningItems] = useState<string[]>([...DEFAULT_CHECKLIST.morning])
@@ -108,6 +115,7 @@ export default function OnboardingPage() {
   const [cleaningZones, setCleaningZones] = useState([...DEFAULT_CLEANING_ZONES])
   const [newCheckItem, setNewCheckItem] = useState('')
   const [newCleanZone, setNewCleanZone] = useState('')
+  const [newEveningItem, setNewEveningItem] = useState('')
 
   // Step 5: Food Cost
   const [foodCostUrl, setFoodCostUrl] = useState('')
@@ -144,7 +152,18 @@ export default function OnboardingPage() {
       const data = await res.json()
       if (!res.ok || !data.ok) throw new Error(data.error || 'Błąd')
 
-      setWorkers(prev => [...prev, { name: wName.trim(), role: wRole, pin: wPin, position: wPosition }])
+      const newWorker: AddedWorker = {
+        id: data.id,
+        name: wName.trim(),
+        role: wRole,
+        pin: wPin,
+        modules: defaultModulesForRole(wRole),
+      }
+
+      setWorkers(prev => [...prev, newWorker])
+      // Show module config for this worker
+      setConfiguringWorker(newWorker)
+      setConfigModules(new Set(newWorker.modules))
       setWName('')
       setWPin('')
       setWPosition('')
@@ -152,6 +171,26 @@ export default function OnboardingPage() {
       setError(err.message)
     }
     setAddingWorker(false)
+  }
+
+  // ─── Save module config for worker ───
+  function saveWorkerModules() {
+    if (!configuringWorker) return
+    const updated = workers.map(w =>
+      w.id === configuringWorker.id ? { ...w, modules: Array.from(configModules) } : w
+    )
+    setWorkers(updated)
+    setConfiguringWorker(null)
+  }
+
+  // ─── Toggle module in config ───
+  function toggleConfigModule(modId: string) {
+    setConfigModules(prev => {
+      const next = new Set(prev)
+      if (next.has(modId)) next.delete(modId)
+      else next.add(modId)
+      return next
+    })
   }
 
   // ─── Add equipment ───
@@ -170,7 +209,6 @@ export default function OnboardingPage() {
   // ─── Save equipment to DB ───
   async function saveEquipment() {
     if (equipment.length === 0) return
-    setSavingEquipment(true)
     for (const eq of equipment) {
       await supabase.from('cooling_units').insert({
         location_id: user.location_id,
@@ -182,7 +220,6 @@ export default function OnboardingPage() {
         sort_order: 0,
       })
     }
-    setSavingEquipment(false)
   }
 
   // ─── Save checklist config ───
@@ -234,7 +271,6 @@ export default function OnboardingPage() {
       }
       if (step === 5) {
         await saveFoodCostUrl()
-        // Mark onboarding complete
         await supabase.from('locations').update({ onboarding_completed: true }).eq('id', user.location_id)
         router.push('/')
         return
@@ -245,6 +281,19 @@ export default function OnboardingPage() {
     }
     setSaving(false)
   }
+
+  // ─── Open module config for existing worker ───
+  function openModuleConfig(worker: AddedWorker) {
+    setConfiguringWorker(worker)
+    setConfigModules(new Set(worker.modules))
+  }
+
+  // Group modules by category for display
+  const moduleCategories = WORKER_MODULES.reduce((acc, mod) => {
+    if (!acc[mod.category]) acc[mod.category] = []
+    acc[mod.category].push(mod)
+    return acc
+  }, {} as Record<string, typeof WORKER_MODULES>)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
@@ -268,26 +317,22 @@ export default function OnboardingPage() {
 
       <div className="max-w-lg mx-auto px-4 py-6">
 
-        {/* ═══════════════════════════════════════════════════
-            STEP 1: Welcome & what KitchenOps does
-           ═══════════════════════════════════════════════════ */}
+        {/* ═══ STEP 1: Welcome ═══ */}
         {step === 1 && (
           <div className="space-y-6">
             <div className="text-center">
               <div className="text-6xl mb-3">👨‍🍳</div>
               <h1 className="text-2xl font-bold text-gray-900">Witaj w KitchenOps!</h1>
-              <p className="text-gray-500 mt-2">
-                Za chwilę skonfigurujemy Twój lokal krok po kroku.
-              </p>
+              <p className="text-gray-500 mt-2">Za chwilę skonfigurujemy Twój lokal krok po kroku.</p>
             </div>
 
             <div className="space-y-3">
               {[
-                { icon: '👥', title: 'Zespół', desc: 'Dodaj pracowników — każdy dostanie swój PIN do logowania. Przypisz rolę (kuchnia/sala/bar/menager) żeby widzieli odpowiednie moduły.' },
-                { icon: '🧊', title: 'Sprzęt', desc: 'Dodaj lodówki, zamrażarki, piece — system będzie kontrolował temperatury i pozwoli zgłaszać usterki dla konkretnych urządzeń.' },
-                { icon: '✅', title: 'Checklist zmianowy', desc: 'Lista zadań na każdą zmianę (poranną i wieczorną). Pracownicy odhaczają punkty — Ty widzisz postęp w czasie rzeczywistym.' },
-                { icon: '🧹', title: 'Sprzątanie', desc: 'Harmonogram sprzątania — codziennie, co tydzień, co miesiąc. Każda strefa z listą do odhaczenia.' },
-                { icon: '💰', title: 'Food Cost', desc: 'Podłącz arkusz Excel z cenami produktów — system policzy koszt surowca na każde danie i porówna ceny na fakturach.' },
+                { icon: '👥', title: 'Zespół', desc: 'Dodaj pracowników, właścicieli i menagerów. Każdy dostanie PIN do logowania. Wybierz jakie kafelki (moduły) widzi każda osoba.' },
+                { icon: '🧊', title: 'Sprzęt', desc: 'Dodaj lodówki, zamrażarki, piece — system kontroluje temperatury 2x dziennie i pozwala zgłaszać usterki.' },
+                { icon: '✅', title: 'Checklist zmianowy', desc: 'Lista zadań na zmianę poranną i wieczorną. Pracownicy odhaczają — Ty widzisz postęp live.' },
+                { icon: '🧹', title: 'Sprzątanie', desc: 'Harmonogram sprzątania — codziennie, co tydzień, co miesiąc. Każda strefa do odhaczenia.' },
+                { icon: '💰', title: 'Food Cost', desc: 'Podłącz arkusz Excel z cenami — system policzy koszt surowca i porówna ceny na fakturach.' },
               ].map((item, i) => (
                 <div key={i} className="bg-white rounded-2xl border border-gray-200 p-4 flex gap-3 shadow-sm">
                   <div className="text-3xl flex-shrink-0">{item.icon}</div>
@@ -311,21 +356,19 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════
-            STEP 2: Add workers
-           ═══════════════════════════════════════════════════ */}
-        {step === 2 && (
+        {/* ═══ STEP 2: Add workers + module config ═══ */}
+        {step === 2 && !configuringWorker && (
           <div className="space-y-5">
             <div className="text-center">
               <div className="text-5xl mb-2">👥</div>
               <h1 className="text-2xl font-bold text-gray-900">Dodaj zespół</h1>
               <p className="text-gray-500 mt-1 text-sm">
-                Każdy pracownik dostanie swój PIN do logowania na telefonie.
-                Rola decyduje jakie moduły widzi.
+                Dodaj pracowników, menagerów i współwłaścicieli.
+                Po dodaniu każdej osoby wybierzesz jakie kafelki (moduły) widzi.
               </p>
             </div>
 
-            {/* Added workers */}
+            {/* Added workers list */}
             {workers.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-3 shadow-sm">
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
@@ -335,14 +378,20 @@ export default function OnboardingPage() {
                   {workers.map((w, i) => {
                     const r = ROLES.find(r => r.value === w.role)
                     return (
-                      <div key={i} className="flex items-center gap-3 bg-emerald-50 rounded-xl px-3 py-2">
+                      <button
+                        key={i}
+                        onClick={() => openModuleConfig(w)}
+                        className="w-full flex items-center gap-3 bg-emerald-50 rounded-xl px-3 py-2.5 text-left active:scale-[0.98] transition-all"
+                      >
                         <span className="text-lg">{r?.icon || '👤'}</span>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold text-gray-900">{w.name}</div>
-                          <div className="text-[10px] text-gray-500">{r?.label} · PIN: {w.pin}</div>
+                          <div className="text-[10px] text-gray-500">
+                            {r?.label} · {w.modules.length} modułów · PIN: {w.pin}
+                          </div>
                         </div>
-                        <span className="text-emerald-500 text-sm">✓</span>
-                      </div>
+                        <span className="text-xs text-brand-500 font-medium">Edytuj kafelki →</span>
+                      </button>
                     )
                   })}
                 </div>
@@ -352,7 +401,7 @@ export default function OnboardingPage() {
             {/* Add worker form */}
             <div className="bg-white rounded-2xl border-2 border-brand-200 p-4 shadow-sm space-y-3">
               <div className="text-[11px] font-semibold text-brand-600 uppercase tracking-wider">
-                Nowy pracownik
+                Nowa osoba
               </div>
 
               <input
@@ -419,34 +468,107 @@ export default function OnboardingPage() {
                 disabled={!wName.trim() || wPin.length !== 4 || addingWorker}
                 className="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3 rounded-xl disabled:opacity-40 transition-all active:scale-[0.97]"
               >
-                {addingWorker ? 'Dodaję...' : `Dodaj ${wName.trim() || 'pracownika'}`}
+                {addingWorker ? 'Dodaję...' : `Dodaj ${wName.trim() || 'osobę'}`}
               </button>
             </div>
 
-            {/* Info box */}
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-              <strong>Podpowiedź:</strong> Rola w systemie decyduje co widzi pracownik: Kuchnia → checklist kuchenny, temperatury. Sala → posiłki, zadania. Menager → pełny dostęp do raportów i zarządzania.
+              <strong>Podpowiedź:</strong> Możesz dodać kilku właścicieli i menagerów. Rola decyduje o domyślnym zestawie modułów, ale po dodaniu osoby możesz dostosować co dokładnie widzi — klikając "Edytuj kafelki".
             </div>
 
-            <button
-              onClick={() => setStep(3)}
-              className="btn-orange w-full"
-            >
+            <button onClick={() => setStep(3)} className="btn-orange w-full">
               {workers.length > 0 ? 'Dalej — sprzęt →' : 'Pomiń — dodasz później →'}
             </button>
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════
-            STEP 3: Equipment (fridges, freezers, etc.)
-           ═══════════════════════════════════════════════════ */}
+        {/* ═══ STEP 2b: Module config for a worker ═══ */}
+        {step === 2 && configuringWorker && (
+          <div className="space-y-5">
+            <div className="text-center">
+              <div className="text-5xl mb-2">
+                {ROLES.find(r => r.value === configuringWorker.role)?.icon || '👤'}
+              </div>
+              <h1 className="text-xl font-bold text-gray-900">{configuringWorker.name}</h1>
+              <p className="text-gray-500 text-sm mt-1">
+                Zaznacz które kafelki (moduły) widzi ta osoba
+              </p>
+            </div>
+
+            {/* Quick actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfigModules(new Set(WORKER_MODULES.map(m => m.id)))}
+                className="flex-1 py-2 px-3 rounded-xl bg-brand-50 text-brand-700 text-xs font-semibold border border-brand-200"
+              >
+                Zaznacz wszystko
+              </button>
+              <button
+                onClick={() => setConfigModules(new Set(defaultModulesForRole(configuringWorker.role)))}
+                className="flex-1 py-2 px-3 rounded-xl bg-gray-50 text-gray-700 text-xs font-semibold border border-gray-200"
+              >
+                Domyślne dla roli
+              </button>
+            </div>
+
+            {/* Module toggles by category */}
+            {Object.entries(moduleCategories).map(([category, mods]) => (
+              <div key={category} className="bg-white rounded-2xl border border-gray-200 p-3 shadow-sm">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+                  {category}
+                </div>
+                <div className="space-y-1">
+                  {mods.map(mod => {
+                    const isOn = configModules.has(mod.id)
+                    return (
+                      <button
+                        key={mod.id}
+                        onClick={() => toggleConfigModule(mod.id)}
+                        className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all ${
+                          isOn ? 'bg-brand-50 border border-brand-200' : 'bg-gray-50/50 border border-transparent'
+                        }`}
+                      >
+                        <span className="text-xl">{mod.icon}</span>
+                        <div className="text-left flex-1 min-w-0">
+                          <div className={`font-semibold text-sm ${isOn ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {mod.title}
+                          </div>
+                          <div className="text-[10px] text-gray-400 truncate">{mod.subtitle}</div>
+                        </div>
+                        <div className={`w-8 h-5 rounded-full flex items-center transition-all ${
+                          isOn ? 'bg-brand-500 justify-end' : 'bg-gray-200 justify-start'
+                        }`}>
+                          <div className="w-4 h-4 bg-white rounded-full shadow mx-0.5" />
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div className="text-center text-xs text-gray-400">
+              Włączone: {configModules.size} modułów
+            </div>
+
+            <button
+              onClick={saveWorkerModules}
+              className="btn-orange w-full"
+            >
+              Zapisz kafelki dla {configuringWorker.name.split(' ')[0]} ✓
+            </button>
+          </div>
+        )}
+
+        {/* ═══ STEP 3: Equipment ═══ */}
         {step === 3 && (
           <div className="space-y-5">
             <div className="text-center">
               <div className="text-5xl mb-2">🧊</div>
               <h1 className="text-2xl font-bold text-gray-900">Sprzęt i urządzenia</h1>
               <p className="text-gray-500 mt-1 text-sm">
-                Dodaj lodówki i zamrażarki — system będzie kontrolował ich temperatury 2x dziennie (rano i wieczorem). Usterki zgłaszasz z wyborem konkretnego urządzenia.
+                Dodaj lodówki i zamrażarki — system kontroluje temperatury 2x dziennie.
+                Usterki zgłaszasz z wyborem konkretnego urządzenia.
               </p>
             </div>
 
@@ -459,10 +581,7 @@ export default function OnboardingPage() {
                 {EQUIPMENT_PRESETS.map(preset => (
                   <button
                     key={preset.type}
-                    onClick={() => {
-                      setEqType(preset.type)
-                      setEqName(preset.label)
-                    }}
+                    onClick={() => { setEqType(preset.type); setEqName(preset.label) }}
                     className={`p-3 rounded-xl border-2 text-left transition-all ${
                       eqType === preset.type && eqName === preset.label
                         ? 'border-brand-500 bg-brand-50'
@@ -498,7 +617,7 @@ export default function OnboardingPage() {
             {equipment.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 p-3 shadow-sm">
                 <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
-                  Dodane urządzenia ({equipment.length})
+                  Dodane ({equipment.length})
                 </div>
                 <div className="space-y-1.5">
                   {equipment.map((eq, i) => {
@@ -523,27 +642,20 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            <button
-              onClick={handleNext}
-              disabled={saving}
-              className="btn-orange w-full"
-            >
+            <button onClick={handleNext} disabled={saving} className="btn-orange w-full">
               {saving ? 'Zapisuję...' : equipment.length > 0 ? 'Zapisz i dalej →' : 'Pomiń — dodasz później →'}
             </button>
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════
-            STEP 4: Checklist + Cleaning
-           ═══════════════════════════════════════════════════ */}
+        {/* ═══ STEP 4: Checklist + Cleaning ═══ */}
         {step === 4 && (
           <div className="space-y-5">
             <div className="text-center">
               <div className="text-5xl mb-2">✅</div>
               <h1 className="text-2xl font-bold text-gray-900">Checklist i sprzątanie</h1>
               <p className="text-gray-500 mt-1 text-sm">
-                Przygotowaliśmy domyślne pozycje — dostosuj je do swojego lokalu.
-                Pracownicy będą odhaczać punkty na każdej zmianie.
+                Domyślne pozycje — dostosuj do swojego lokalu. Pracownicy będą odhaczać na każdej zmianie.
               </p>
             </div>
 
@@ -559,10 +671,8 @@ export default function OnboardingPage() {
                   <div key={i} className="flex items-center gap-2 bg-orange-50/50 rounded-xl px-3 py-2">
                     <span className="text-xs text-gray-400">{i + 1}.</span>
                     <span className="text-sm text-gray-700 flex-1">{item}</span>
-                    <button
-                      onClick={() => setMorningItems(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-gray-300 hover:text-red-500 text-xs"
-                    >✕</button>
+                    <button onClick={() => setMorningItems(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-gray-300 hover:text-red-500 text-xs">✕</button>
                   </div>
                 ))}
               </div>
@@ -581,10 +691,7 @@ export default function OnboardingPage() {
                 />
                 <button
                   onClick={() => {
-                    if (newCheckItem.trim()) {
-                      setMorningItems(prev => [...prev, newCheckItem.trim()])
-                      setNewCheckItem('')
-                    }
+                    if (newCheckItem.trim()) { setMorningItems(prev => [...prev, newCheckItem.trim()]); setNewCheckItem('') }
                   }}
                   className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold"
                 >+</button>
@@ -603,31 +710,30 @@ export default function OnboardingPage() {
                   <div key={i} className="flex items-center gap-2 bg-violet-50/50 rounded-xl px-3 py-2">
                     <span className="text-xs text-gray-400">{i + 1}.</span>
                     <span className="text-sm text-gray-700 flex-1">{item}</span>
-                    <button
-                      onClick={() => setEveningItems(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-gray-300 hover:text-red-500 text-xs"
-                    >✕</button>
+                    <button onClick={() => setEveningItems(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-gray-300 hover:text-red-500 text-xs">✕</button>
                   </div>
                 ))}
               </div>
               <div className="flex gap-2 mt-2">
                 <input
-                  value={step === 4 ? '' : ''}
-                  onChange={e => {
-                    const val = e.target.value
-                    // We use a separate local approach for evening
-                    e.target.dataset.val = val
-                  }}
+                  value={newEveningItem}
+                  onChange={e => setNewEveningItem(e.target.value)}
                   onKeyDown={e => {
-                    const val = (e.target as HTMLInputElement).value
-                    if (e.key === 'Enter' && val.trim()) {
-                      setEveningItems(prev => [...prev, val.trim()])
-                      ;(e.target as HTMLInputElement).value = ''
+                    if (e.key === 'Enter' && newEveningItem.trim()) {
+                      setEveningItems(prev => [...prev, newEveningItem.trim()])
+                      setNewEveningItem('')
                     }
                   }}
                   placeholder="Dodaj punkt..."
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:border-brand-500 focus:outline-none"
                 />
+                <button
+                  onClick={() => {
+                    if (newEveningItem.trim()) { setEveningItems(prev => [...prev, newEveningItem.trim()]); setNewEveningItem('') }
+                  }}
+                  className="px-3 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold"
+                >+</button>
               </div>
             </div>
 
@@ -639,7 +745,6 @@ export default function OnboardingPage() {
               </div>
               <p className="text-xs text-gray-400 mb-3">
                 Harmonogram sprzątania — pracownicy odhaczają w zakładce Sprzątanie.
-                Domyślne strefy możesz edytować lub usunąć.
               </p>
               <div className="space-y-1.5">
                 {cleaningZones.map((zone, i) => (
@@ -648,10 +753,8 @@ export default function OnboardingPage() {
                       <div className="text-sm text-gray-700">{zone.name}</div>
                       <div className="text-[10px] text-gray-400">{zone.frequency}</div>
                     </div>
-                    <button
-                      onClick={() => setCleaningZones(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-gray-300 hover:text-red-500 text-xs"
-                    >✕</button>
+                    <button onClick={() => setCleaningZones(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-gray-300 hover:text-red-500 text-xs">✕</button>
                   </div>
                 ))}
               </div>
@@ -680,31 +783,22 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            {error && (
-              <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
-            )}
+            {error && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
 
-            <button
-              onClick={handleNext}
-              disabled={saving}
-              className="btn-orange w-full"
-            >
+            <button onClick={handleNext} disabled={saving} className="btn-orange w-full">
               {saving ? 'Zapisuję...' : 'Zapisz i dalej — Food Cost →'}
             </button>
           </div>
         )}
 
-        {/* ═══════════════════════════════════════════════════
-            STEP 5: Food Cost link
-           ═══════════════════════════════════════════════════ */}
+        {/* ═══ STEP 5: Food Cost ═══ */}
         {step === 5 && (
           <div className="space-y-5">
             <div className="text-center">
               <div className="text-5xl mb-2">💰</div>
               <h1 className="text-2xl font-bold text-gray-900">Food Cost</h1>
               <p className="text-gray-500 mt-1 text-sm">
-                Podaj link do arkusza Google Sheets lub Excel Online z cenami surowców.
-                System automatycznie wyliczy koszt dań i porówna ceny na fakturach.
+                Podaj link do arkusza z cenami surowców — system wyliczy koszt dań i porówna ceny na fakturach.
               </p>
             </div>
 
@@ -722,24 +816,18 @@ export default function OnboardingPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700 space-y-2">
                 <div className="font-semibold">Jak przygotować arkusz?</div>
                 <div>1. Stwórz arkusz z kolumnami: <strong>Nazwa produktu</strong>, <strong>Jednostka</strong> (kg/szt/l), <strong>Cena netto</strong></div>
-                <div>2. Udostępnij arkusz jako "Każdy z linkiem może wyświetlać"</div>
+                <div>2. Udostępnij jako "Każdy z linkiem może wyświetlać"</div>
                 <div>3. Wklej link tutaj</div>
               </div>
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-              <strong>Nie masz jeszcze arkusza?</strong> Spokojnie — możesz pominąć ten krok i dodać link później w Ustawieniach → Food Cost.
+              <strong>Nie masz arkusza?</strong> Spokojnie — możesz dodać link później w Ustawieniach → Food Cost.
             </div>
 
-            {error && (
-              <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
-            )}
+            {error && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
 
-            <button
-              onClick={handleNext}
-              disabled={saving}
-              className="btn-orange w-full text-lg py-4"
-            >
+            <button onClick={handleNext} disabled={saving} className="btn-orange w-full text-lg py-4">
               {saving ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -750,10 +838,10 @@ export default function OnboardingPage() {
               )}
             </button>
 
-            {/* Summary of what was configured */}
+            {/* Summary */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                Co już skonfigurowałeś
+                Co skonfigurowałeś
               </div>
               <div className="space-y-1.5 text-sm">
                 <div className="flex items-center gap-2">
@@ -761,7 +849,7 @@ export default function OnboardingPage() {
                     {workers.length > 0 ? '✓' : '○'}
                   </span>
                   <span className="text-gray-700">
-                    Pracownicy: {workers.length > 0 ? `${workers.length} dodanych` : 'pominięto'}
+                    Zespół: {workers.length > 0 ? `${workers.length} osób` : 'pominięto'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

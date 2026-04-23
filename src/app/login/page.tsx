@@ -41,6 +41,7 @@ function getBeltBg(stars: number): string {
 const BIZ_ICONS: Record<string, string> = {
   restaurant: '🍽️',
   bar: '🍺',
+  club: '🪩',
   cafe: '☕',
   fastfood: '🍔',
   hotel: '🏨',
