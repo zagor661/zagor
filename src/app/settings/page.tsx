@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@/lib/useUser'
-import { ROLES, normalizeRole } from '@/lib/roles'
+import { ROLES, normalizeRole, ALL_MODULES, DEFAULT_ENABLED_MODULES } from '@/lib/roles'
 import type { RoleType } from '@/lib/roles'
 import supabase from '@/lib/supabase'
 
@@ -18,6 +18,7 @@ interface ProfileRow {
 const ROLE_OPTIONS: { value: RoleType; label: string; icon: string }[] = [
   { value: 'kitchen', label: 'Kuchnia', icon: '🍳' },
   { value: 'hall',    label: 'Sala',    icon: '🍽️' },
+  { value: 'bar',     label: 'Bar',     icon: '🍸' },
   { value: 'manager', label: 'Menager', icon: '👔' },
   { value: 'owner',   label: 'Właściciel', icon: '👑' },
 ]
@@ -34,6 +35,13 @@ export default function SettingsPage() {
   const [newPin, setNewPin] = useState('')
   const [addError, setAddError] = useState('')
 
+  // Module management state
+  const [activeTab, setActiveTab] = useState<'team' | 'modules'>('team')
+  const [enabledModules, setEnabledModules] = useState<Set<string>>(new Set())
+  const [modulesLoaded, setModulesLoaded] = useState(false)
+  const [savingModules, setSavingModules] = useState(false)
+  const [modulesSaved, setModulesSaved] = useState(false)
+
   // Only owner can access
   useEffect(() => {
     if (!loading && user && normalizeRole(user.role) !== 'owner') {
@@ -44,7 +52,45 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return
     loadProfiles()
+    loadModules()
   }, [user])
+
+  async function loadModules() {
+    if (!user?.location_id) return
+    const { data } = await supabase
+      .from('locations')
+      .select('enabled_modules')
+      .eq('id', user.location_id)
+      .single()
+    if (data?.enabled_modules) {
+      setEnabledModules(new Set(data.enabled_modules))
+    } else {
+      setEnabledModules(new Set(DEFAULT_ENABLED_MODULES))
+    }
+    setModulesLoaded(true)
+  }
+
+  function toggleModule(id: string) {
+    setEnabledModules(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setModulesSaved(false)
+  }
+
+  async function saveModules() {
+    if (!user?.location_id) return
+    setSavingModules(true)
+    await supabase
+      .from('locations')
+      .update({ enabled_modules: Array.from(enabledModules) })
+      .eq('id', user.location_id)
+    setSavingModules(false)
+    setModulesSaved(true)
+    setTimeout(() => setModulesSaved(false), 2000)
+  }
 
   async function loadProfiles() {
     setLoadingProfiles(true)
@@ -117,12 +163,99 @@ export default function SettingsPage() {
           <div>
             <button onClick={() => router.push('/')} className="text-brand-600 text-sm mb-1">← Powrót</button>
             <h1 className="text-2xl font-bold">⚙️ Ustawienia</h1>
-            <p className="text-gray-500 text-sm">Zarządzanie użytkownikami i rolami</p>
+            <p className="text-gray-500 text-sm">{user.location_name || 'Twój lokal'}</p>
           </div>
         </div>
 
-        {/* Users list */}
-        <div className="space-y-3">
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab('team')}
+            className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+              activeTab === 'team' ? 'bg-white shadow text-gray-900' : 'text-gray-500'
+            }`}
+          >
+            👥 Zespół
+          </button>
+          <button
+            onClick={() => setActiveTab('modules')}
+            className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
+              activeTab === 'modules' ? 'bg-white shadow text-gray-900' : 'text-gray-500'
+            }`}
+          >
+            🧩 Moduły
+          </button>
+        </div>
+
+        {/* ─── MODULES TAB ─── */}
+        {activeTab === 'modules' && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Wybierz które funkcje są dostępne w Twoim lokalu. Wyłączone moduły nie będą widoczne dla pracowników.
+            </p>
+
+            {modulesLoaded && (() => {
+              const categories = ALL_MODULES.reduce((acc, mod) => {
+                if (!acc[mod.category]) acc[mod.category] = []
+                acc[mod.category].push(mod)
+                return acc
+              }, {} as Record<string, typeof ALL_MODULES>)
+
+              return Object.entries(categories).map(([category, mods]) => (
+                <div key={category} className="card">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">
+                    {category}
+                  </h3>
+                  <div className="space-y-2">
+                    {mods.map(mod => {
+                      if (mod.id === '/settings') return null
+                      const isOn = enabledModules.has(mod.id)
+                      return (
+                        <button
+                          key={mod.id}
+                          onClick={() => toggleModule(mod.id)}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                            isOn
+                              ? 'bg-brand-50 border-2 border-brand-300'
+                              : 'bg-gray-50 border-2 border-transparent opacity-60'
+                          }`}
+                        >
+                          <div className="text-xl">{mod.icon}</div>
+                          <div className="text-left flex-1">
+                            <div className={`font-semibold text-sm ${isOn ? 'text-gray-900' : 'text-gray-400'}`}>
+                              {mod.title}
+                            </div>
+                            <div className="text-xs text-gray-400">{mod.subtitle}</div>
+                          </div>
+                          <div className={`w-10 h-6 rounded-full flex items-center transition-all ${
+                            isOn ? 'bg-brand-500 justify-end' : 'bg-gray-200 justify-start'
+                          }`}>
+                            <div className="w-5 h-5 bg-white rounded-full shadow mx-0.5" />
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            })()}
+
+            <button
+              onClick={saveModules}
+              disabled={savingModules}
+              className={`w-full py-3 rounded-xl font-bold text-white transition-all ${
+                modulesSaved
+                  ? 'bg-green-500'
+                  : 'bg-brand-500 hover:bg-brand-600'
+              }`}
+            >
+              {savingModules ? 'Zapisuję...' : modulesSaved ? '✓ Zapisano!' : 'Zapisz zmiany'}
+            </button>
+          </div>
+        )}
+
+        {/* ─── TEAM TAB ─── */}
+        {activeTab === 'team' && <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-900">Użytkownicy</h2>
             <button
@@ -231,7 +364,7 @@ export default function SettingsPage() {
               )
             })
           )}
-        </div>
+        </div>}
 
       </div>
     </div>

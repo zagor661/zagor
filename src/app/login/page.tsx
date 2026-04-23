@@ -13,6 +13,13 @@ interface Profile {
   pin: string
 }
 
+interface Location {
+  id: string
+  name: string
+  address?: string
+  business_type?: string
+}
+
 // Belt colors based on star count — same as dashboard
 const BELT_COLORS = [
   { min: 0,   bg: 'bg-yellow-400' },
@@ -31,9 +38,22 @@ function getBeltBg(stars: number): string {
   return belt.bg
 }
 
+const BIZ_ICONS: Record<string, string> = {
+  restaurant: '🍽️',
+  bar: '🍺',
+  cafe: '☕',
+  fastfood: '🍔',
+  hotel: '🏨',
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const { login } = useUser(false)
+
+  // Steps: 'location' | 'user' | 'pin'
+  const [step, setStep] = useState<'location' | 'user' | 'pin'>('location')
+  const [locations, setLocations] = useState<Location[]>([])
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [starCounts, setStarCounts] = useState<Record<string, number>>({})
   const [selected, setSelected] = useState<Profile | null>(null)
@@ -43,50 +63,112 @@ export default function LoginPage() {
   const [attempts, setAttempts] = useState(0)
   const [locked, setLocked] = useState(false)
 
+  // Load locations on mount
   useEffect(() => {
     const stored = localStorage.getItem('kitchenops_user')
     if (stored) { router.push('/'); return }
 
-    async function load() {
+    async function loadLocations() {
+      const { data } = await supabase
+        .from('locations')
+        .select('id, name, address, business_type')
+        .order('name')
+
+      if (data && data.length > 0) {
+        setLocations(data)
+        // If only one location, auto-select and go to users
+        if (data.length === 1) {
+          setSelectedLocation(data[0])
+          setStep('user')
+          await loadProfilesForLocation(data[0].id)
+        }
+      }
+      setLoading(false)
+    }
+    loadLocations()
+  }, [])
+
+  async function loadProfilesForLocation(locationId: string) {
+    // Get user IDs linked to this location (exclude expired temp access)
+    const { data: links } = await supabase
+      .from('user_locations')
+      .select('user_id, expires_at')
+      .eq('location_id', locationId)
+    // Filter out expired entries
+    const now = new Date().toISOString()
+    const validLinks = (links || []).filter(
+      l => !l.expires_at || l.expires_at > now
+    )
+
+    let profileData: Profile[] = []
+
+    if (validLinks.length > 0) {
+      const userIds = validLinks.map(l => l.user_id)
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, pin')
+        .eq('is_active', true)
+        .in('id', userIds)
+        .order('full_name')
+      profileData = data || []
+    }
+
+    // Fallback: if no user_locations exist yet, load all active profiles
+    // (backward compatibility for existing single-location setups)
+    if (profileData.length === 0) {
       const { data } = await supabase
         .from('profiles')
         .select('id, email, full_name, role, pin')
         .eq('is_active', true)
         .order('full_name')
-      if (data) {
-        // Fetch star counts for belt colors
-        const { data: stars } = await supabase
-          .from('worker_stars')
-          .select('profile_id')
-        const counts: Record<string, number> = {}
-        if (stars) {
-          for (const s of stars) {
-            counts[s.profile_id] = (counts[s.profile_id] || 0) + 1
-          }
-        }
-        setStarCounts(counts)
-
-        // Sort: 1) role rank (owner > manager > kitchen > hall)
-        // 2) within same role: by stars descending (highest belt first)
-        const roleOrder: Record<string, number> = { owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3 }
-        data.sort((a: Profile, b: Profile) => {
-          const roleA = roleOrder[a.role] ?? 9
-          const roleB = roleOrder[b.role] ?? 9
-          if (roleA !== roleB) return roleA - roleB
-          // Same role — sort by stars descending (more stars = higher)
-          const starsA = counts[a.id] || 0
-          const starsB = counts[b.id] || 0
-          return starsB - starsA
-        })
-        setProfiles(data)
-      }
-      setLoading(false)
+      profileData = data || []
     }
-    load()
-  }, [])
+
+    // Fetch star counts for belt colors
+    const { data: stars } = await supabase
+      .from('worker_stars')
+      .select('profile_id')
+    const counts: Record<string, number> = {}
+    if (stars) {
+      for (const s of stars) {
+        counts[s.profile_id] = (counts[s.profile_id] || 0) + 1
+      }
+    }
+    setStarCounts(counts)
+
+    // Sort: role rank then stars descending
+    const roleOrder: Record<string, number> = {
+      owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3, bar: 3, bartender: 3, barman: 3,
+    }
+    profileData.sort((a, b) => {
+      const roleA = roleOrder[a.role] ?? 9
+      const roleB = roleOrder[b.role] ?? 9
+      if (roleA !== roleB) return roleA - roleB
+      const starsA = counts[a.id] || 0
+      const starsB = counts[b.id] || 0
+      return starsB - starsA
+    })
+
+    setProfiles(profileData)
+  }
+
+  function selectLocation(loc: Location) {
+    setSelectedLocation(loc)
+    setStep('user')
+    loadProfilesForLocation(loc.id)
+  }
+
+  function selectUser(p: Profile) {
+    setSelected(p)
+    setStep('pin')
+    setPin('')
+    setError('')
+    setAttempts(0)
+    setLocked(false)
+  }
 
   const handleLogin = async () => {
-    if (!selected || locked) return
+    if (!selected || !selectedLocation || locked) return
     setError('')
 
     if (pin !== selected.pin) {
@@ -105,35 +187,13 @@ export default function LoginPage() {
     }
     setAttempts(0)
 
-    const { data: ul } = await supabase
-      .from('user_locations')
-      .select('location_id, locations(id, name)')
-      .eq('user_id', selected.id)
-      .limit(1)
-
-    let locId = ''
-    let locName = ''
-    if (ul && ul.length > 0) {
-      locId = (ul[0] as any).locations?.id || ''
-      locName = (ul[0] as any).locations?.name || ''
-    } else {
-      const { data: locs } = await supabase
-        .from('locations')
-        .select('id, name')
-        .limit(1)
-      if (locs && locs[0]) {
-        locId = locs[0].id
-        locName = locs[0].name
-      }
-    }
-
     login({
       id: selected.id,
       email: selected.email,
       full_name: selected.full_name,
       role: selected.role,
-      location_id: locId,
-      location_name: locName,
+      location_id: selectedLocation.id,
+      location_name: selectedLocation.name,
     })
 
     router.push('/')
@@ -142,21 +202,14 @@ export default function LoginPage() {
   // Get icon and background for a profile
   function getProfileAvatar(p: Profile) {
     const role = normalizeRole(p.role)
-
-    if (role === 'owner') {
-      return { icon: '🥷', bgClass: 'bg-gray-900' }
-    }
-    if (role === 'manager') {
-      return { icon: '👔', bgClass: `bg-gradient-to-br ${ROLES.manager.gradientFrom} ${ROLES.manager.gradientTo}` }
-    }
-
-    // Kitchen & Hall — chef icon with belt color
+    if (role === 'owner') return { icon: '🥷', bgClass: 'bg-gray-900' }
+    if (role === 'manager') return { icon: '👔', bgClass: `bg-gradient-to-br ${ROLES.manager.gradientFrom} ${ROLES.manager.gradientTo}` }
+    if (role === 'bar') return { icon: '🍸', bgClass: `bg-gradient-to-br ${ROLES.bar.gradientFrom} ${ROLES.bar.gradientTo}` }
     const stars = starCounts[p.id] || 0
     const effectiveStars = p.full_name.toLowerCase().includes('yurii') ? stars + 10 : stars
     return { icon: '👨‍🍳', bgClass: getBeltBg(effectiveStars) }
   }
 
-  // Display name — owner shows "Owner", others show full name
   function getDisplayName(p: Profile) {
     const role = normalizeRole(p.role)
     if (role === 'owner') return 'Owner'
@@ -171,15 +224,74 @@ export default function LoginPage() {
     )
   }
 
-  // Step 1: Choose user
-  if (!selected) {
+  // ─── STEP: Choose location ───
+  if (step === 'location') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-4">
         <div className="max-w-sm mx-auto pt-10">
           <div className="text-center mb-8">
             <div className="text-6xl mb-3">👨‍🍳</div>
             <h1 className="text-3xl font-bold text-gray-900">KitchenOps</h1>
-            <p className="text-gray-500 mt-2">Wybierz swoje konto</p>
+            <p className="text-gray-500 mt-2">Wybierz lokal</p>
+          </div>
+          <div className="space-y-3">
+            {locations.map(loc => (
+              <button
+                key={loc.id}
+                onClick={() => selectLocation(loc)}
+                className="w-full card flex items-center gap-4 hover:border-brand-300 hover:shadow-md transition-all active:scale-98"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-brand-100 flex items-center justify-center text-2xl flex-shrink-0 shadow">
+                  {BIZ_ICONS[loc.business_type || 'restaurant'] || '🏪'}
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-gray-900">{loc.name}</div>
+                  {loc.address && (
+                    <div className="text-xs text-gray-500">{loc.address}</div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {locations.length === 0 && (
+            <div className="text-center mt-6 space-y-4">
+              <div className="card py-8">
+                <p className="text-gray-500">Brak lokali.</p>
+                <p className="text-gray-400 text-sm mt-1">Skonfiguruj swój pierwszy lokal</p>
+              </div>
+              <button
+                onClick={() => router.push('/setup')}
+                className="btn-orange w-full"
+              >
+                Rozpocznij konfigurację →
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── STEP: Choose user ───
+  if (step === 'user') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-4">
+        <div className="max-w-sm mx-auto pt-10">
+          <div className="text-center mb-8">
+            <div className="text-4xl mb-2">
+              {BIZ_ICONS[selectedLocation?.business_type || 'restaurant'] || '🏪'}
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">{selectedLocation?.name}</h1>
+            <p className="text-gray-500 mt-1">Kto się loguje?</p>
+            {locations.length > 1 && (
+              <button
+                onClick={() => { setStep('location'); setProfiles([]) }}
+                className="text-brand-600 text-sm mt-1"
+              >
+                ← Zmień lokal
+              </button>
+            )}
           </div>
           <div className="space-y-3">
             {profiles.map(p => {
@@ -188,7 +300,7 @@ export default function LoginPage() {
               return (
                 <button
                   key={p.id}
-                  onClick={() => setSelected(p)}
+                  onClick={() => selectUser(p)}
                   className="w-full card flex items-center gap-4 hover:border-brand-300 hover:shadow-md transition-all active:scale-98"
                 >
                   <div className={`w-12 h-12 rounded-2xl ${avatar.bgClass} flex items-center justify-center text-xl flex-shrink-0 shadow-md`}>
@@ -206,8 +318,8 @@ export default function LoginPage() {
           </div>
           {profiles.length === 0 && (
             <div className="card text-center py-8">
-              <p className="text-gray-500">Brak użytkowników.</p>
-              <p className="text-gray-400 text-sm mt-1">Uruchom: node setup-db.js</p>
+              <p className="text-gray-500">Brak pracowników w tym lokalu.</p>
+              <p className="text-gray-400 text-sm mt-1">Dodaj ich w Ustawieniach po zalogowaniu jako Owner</p>
             </div>
           )}
         </div>
@@ -215,8 +327,8 @@ export default function LoginPage() {
     )
   }
 
-  // Step 2: Enter PIN
-  const selectedAvatar = getProfileAvatar(selected)
+  // ─── STEP: Enter PIN ───
+  const selectedAvatar = selected ? getProfileAvatar(selected) : { icon: '', bgClass: '' }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-4">
@@ -225,8 +337,12 @@ export default function LoginPage() {
           <div className={`w-20 h-20 mx-auto rounded-2xl ${selectedAvatar.bgClass} flex items-center justify-center text-4xl mb-3 shadow-lg`}>
             {selectedAvatar.icon}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">{getDisplayName(selected)}</h2>
-          <button onClick={() => { setSelected(null); setPin(''); setError('') }} className="text-brand-600 text-sm mt-1">
+          <h2 className="text-2xl font-bold text-gray-900">{selected ? getDisplayName(selected) : ''}</h2>
+          <div className="text-sm text-gray-400 mt-0.5">{selectedLocation?.name}</div>
+          <button
+            onClick={() => { setStep('user'); setSelected(null); setPin(''); setError('') }}
+            className="text-brand-600 text-sm mt-1"
+          >
             ← Zmień osobę
           </button>
         </div>

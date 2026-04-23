@@ -10,8 +10,8 @@ export default function BottomNav() {
   const pathname = usePathname()
 
   if (!user) return null
-  // Nie pokazuj na loginie
-  if (pathname === '/login') return null
+  // Nie pokazuj na loginie i setupie
+  if (pathname === '/login' || pathname === '/setup') return null
 
   const role: RoleType = normalizeRole(user.role)
   const nav = ROLES[role].bottomNav

@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, pin, locationId } = await req.json()
+    const body = await req.json()
+    const name = body.name || body.full_name
+    const pin = body.pin
+    const role = body.role || 'kitchen'
+    const locationId = body.locationId || body.location_id
 
     const serviceKey = process.env.SUPABASE_SERVICE_KEY
     if (!serviceKey) {
@@ -26,8 +30,8 @@ export async function POST(req: NextRequest) {
 
     if (authErr) throw authErr
 
-    // Update profile with pin
-    await admin.from('profiles').update({ pin, role: 'worker' }).eq('id', authUser.user.id)
+    // Update profile with pin and role
+    await admin.from('profiles').update({ pin, role, is_active: true }).eq('id', authUser.user.id)
 
     // Link to location
     if (locationId) {

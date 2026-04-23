@@ -3,12 +3,15 @@
 // 4 role z grupami modułów, bottom nav, sekcjami
 // ============================================================
 
-export type RoleType = 'kitchen' | 'hall' | 'manager' | 'owner'
+export type RoleType = 'kitchen' | 'hall' | 'bar' | 'manager' | 'owner'
 
 export function normalizeRole(role: string): RoleType {
   switch (role) {
     case 'kitchen': return 'kitchen'
     case 'hall': return 'hall'
+    case 'bar': return 'bar'
+    case 'bartender': return 'bar'
+    case 'barman': return 'bar'
     case 'manager': return 'manager'
     case 'owner': return 'owner'
     case 'admin': return 'owner'
@@ -217,6 +220,48 @@ const MOD_STARS: ModuleConfig = {
   bgColor: 'bg-yellow-50',
 }
 
+const MOD_BAR_CHECKLIST: ModuleConfig = {
+  href: '/checklist/bar',
+  icon: '🍸',
+  title: 'Checklist Bar',
+  subtitle: 'Otwarcie · W ciagu dnia · Zamkniecie baru',
+  borderColor: 'border-pink-200',
+  bgColor: 'bg-pink-50',
+}
+
+// ─── Katalog wszystkich modułów do wyboru przez Ownera ──────
+// Każdy moduł ma unikalne id (= href) — locations.enabled_modules
+// przechowuje tablicę tych id, np. ['/checklist','/tasks','/schedule']
+
+export const ALL_MODULES: (ModuleConfig & { id: string; category: string })[] = [
+  { ...MOD_CHECKLIST,      id: '/checklist',       category: 'Operacje' },
+  { ...MOD_BAR_CHECKLIST,  id: '/checklist/bar',   category: 'Operacje' },
+  { ...MOD_TASKS,          id: '/tasks',            category: 'Operacje' },
+  { ...MOD_SCHEDULE,       id: '/schedule',         category: 'Zespol' },
+  { ...MOD_MEALS,          id: '/meals',            category: 'Zespol' },
+  { ...MOD_STARS,          id: '/stars',            category: 'Zespol' },
+  { ...MOD_WORKER_PROFILES,id: '/worker',           category: 'Zespol' },
+  { ...MOD_WOKI_TALKIE,    id: '/woki-talkie',      category: 'Komunikacja' },
+  { ...MOD_AWARIE,         id: '/awarie',           category: 'Komunikacja' },
+  { ...MOD_SANEPID,        id: '/sanepid',          category: 'HACCP' },
+  { ...MOD_TEMPERATURE,    id: '/temperature',      category: 'HACCP' },
+  { ...MOD_CLEANING,       id: '/cleaning',         category: 'HACCP' },
+  { ...MOD_STRATY,         id: '/straty',           category: 'HACCP' },
+  { ...MOD_DOSTAWY,        id: '/sanepid/dostawy',  category: 'HACCP' },
+  { ...MOD_RAPORTY,        id: '/sanepid/raport',   category: 'Raporty' },
+  { ...MOD_DAILY_REPORT,   id: '/daily-report',     category: 'Raporty' },
+  { ...MOD_FOOD_COST,      id: '/food-cost',        category: 'Finanse' },
+  { ...MOD_FAKTURY,        id: '/faktury',          category: 'Finanse' },
+  { ...MOD_USTAWIENIA,     id: '/settings',         category: 'System' },
+]
+
+// Domyślne moduły włączone dla nowej lokacji (owner może zmieniać)
+export const DEFAULT_ENABLED_MODULES: string[] = [
+  '/checklist', '/tasks', '/schedule', '/meals', '/awarie',
+  '/woki-talkie', '/sanepid', '/temperature', '/cleaning',
+  '/straty', '/stars', '/daily-report',
+]
+
 // ─── Definicje ról ──────────────────────────────────────────
 
 export const ROLES: Record<RoleType, RoleConfig> = {
@@ -282,6 +327,39 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     bottomNav: [
       { icon: '🏠', label: 'Start', href: '/' },
       { icon: '✅', label: 'Checklist', href: '/checklist' },
+      { icon: '📋', label: 'Zadania', href: '/tasks' },
+      { icon: '📅', label: 'Grafik', href: '/schedule' },
+    ],
+  },
+  bar: {
+    key: 'bar',
+    label: 'Bar',
+    labelPl: 'Bar',
+    icon: '🍸',
+    color: 'text-pink-700',
+    bgColor: 'bg-pink-50',
+    gradientFrom: 'from-pink-500',
+    gradientTo: 'to-rose-400',
+    description: 'Checklist barowy, straty, zadania, grafik',
+    modules: [MOD_BAR_CHECKLIST, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_STRATY, MOD_WOKI_TALKIE, MOD_STARS],
+    quickActions: ['/checklist/bar', '/tasks'],
+    sections: [
+      {
+        title: 'Twoja zmiana',
+        items: [MOD_MEALS, MOD_SCHEDULE],
+      },
+      {
+        title: 'Bar',
+        items: [MOD_STRATY],
+      },
+      {
+        title: 'Komunikacja',
+        items: [MOD_WOKI_TALKIE, MOD_AWARIE],
+      },
+    ],
+    bottomNav: [
+      { icon: '🏠', label: 'Start', href: '/' },
+      { icon: '🍸', label: 'Checklist', href: '/checklist/bar' },
       { icon: '📋', label: 'Zadania', href: '/tasks' },
       { icon: '📅', label: 'Grafik', href: '/schedule' },
     ],
@@ -372,10 +450,43 @@ export function canAccess(role: RoleType, pathname: string): boolean {
   const config = ROLES[role]
   if (!config) return false
   if (role === 'owner' || role === 'manager') return true
+  // Bar checklist is separate — /checklist/bar is allowed only for bar role
+  if (pathname.startsWith('/checklist/bar')) {
+    return role === 'bar'
+  }
+  // Regular checklist — block bar role (they use /checklist/bar)
+  if (pathname === '/checklist' && role === 'bar') {
+    return false
+  }
   if (SANEPID_SUBPAGES.some(sp => pathname.startsWith(sp))) {
     return config.modules.some(m => m.href === '/sanepid')
   }
   return config.modules.some(m => pathname.startsWith(m.href))
+}
+
+// ─── Module filtering per location ─────────────────────────
+// Filters role modules to only those enabled by the owner for this location
+export function filterModulesByLocation(
+  roleConfig: RoleConfig,
+  enabledModules?: string[] | null
+): RoleConfig {
+  if (!enabledModules || enabledModules.length === 0) return roleConfig
+  const enabled = new Set(enabledModules)
+  // Owner/manager always see settings
+  enabled.add('/settings')
+  return {
+    ...roleConfig,
+    modules: roleConfig.modules.filter(m => enabled.has(m.href)),
+    sections: roleConfig.sections
+      .map(s => ({
+        ...s,
+        items: s.items.filter(m => enabled.has(m.href)),
+      }))
+      .filter(s => s.items.length > 0),
+    bottomNav: roleConfig.bottomNav.filter(
+      n => n.href === '/' || enabled.has(n.href)
+    ),
+  }
 }
 
 export function isAdminRole(role: string): boolean {
