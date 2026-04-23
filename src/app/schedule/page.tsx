@@ -201,13 +201,23 @@ export default function SchedulePage() {
     setError('')
 
     try {
-      // Load workers
-      const { data: wData } = await supabase
-        .from('profiles')
-        .select('id, full_name, role, is_head_chef, hourly_rate')
-        .eq('is_active', true)
-        .in('role', ['kitchen', 'hall'])
-        .order('role')
+      // Load workers linked to this location
+      const { data: locLinks } = await supabase
+        .from('user_locations')
+        .select('user_id')
+        .eq('location_id', user!.location_id)
+
+      const locUserIds = (locLinks || []).map(l => l.user_id)
+
+      const { data: wData } = locUserIds.length > 0
+        ? await supabase
+            .from('profiles')
+            .select('id, full_name, role, is_head_chef, hourly_rate')
+            .eq('is_active', true)
+            .in('id', locUserIds)
+            .in('role', ['kitchen', 'hall', 'bar'])
+            .order('role')
+        : { data: [] }
 
       if (wData) {
         setWorkers(wData)

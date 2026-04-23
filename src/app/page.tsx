@@ -54,11 +54,12 @@ export default function Dashboard() {
         .eq('profile_id', user!.id)
       setStarCount(stars || 0)
 
-      // Pending tasks
+      // Pending tasks (per location)
       const { count: tasks } = await supabase
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
         .eq('assigned_to', user!.id)
+        .eq('location_id', user!.location_id)
         .eq('is_completed', false)
       setPendingTasks(tasks || 0)
 
@@ -110,11 +111,12 @@ export default function Dashboard() {
         .eq('status', 'pending')
       setPendingSwaps(swapCount || 0)
 
-      // Checklist progress today
+      // Checklist progress today (per location)
       try {
         const { data: checkData } = await supabase
           .from('checklist_logs')
           .select('is_done')
+          .eq('location_id', user!.location_id)
           .gte('created_at', todayStr)
         if (checkData) {
           setChecklistProgress({
@@ -170,24 +172,29 @@ export default function Dashboard() {
           todayShiftsCount: sToday, weekShiftsCount: sWeek, monthShiftsCount: sMonth,
         })
 
-        // Open tasks per worker
+        // Open tasks per worker (per location)
         try {
-          const { data: openTasks } = await supabase.from('worker_tasks').select('assigned_to').eq('is_completed', false)
+          const { data: openTasks } = await supabase.from('worker_tasks').select('assigned_to').eq('location_id', user!.location_id).eq('is_completed', false)
           if (openTasks && openTasks.length > 0) {
-            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name').eq('is_active', true)
+            // Get profiles linked to this location
+            const { data: locLinks } = await supabase.from('user_locations').select('user_id').eq('location_id', user!.location_id)
+            const locUserIds = (locLinks || []).map(l => l.user_id)
+            const { data: locProfiles } = locUserIds.length > 0
+              ? await supabase.from('profiles').select('id, full_name').eq('is_active', true).in('id', locUserIds)
+              : { data: [] }
             const countMap: Record<string, number> = {}
             openTasks.forEach(t => { if (t.assigned_to) countMap[t.assigned_to] = (countMap[t.assigned_to] || 0) + 1 })
             const result = Object.entries(countMap).map(([id, count]) => ({
-              name: allProfiles?.find(p => p.id === id)?.full_name || '?',
+              name: locProfiles?.find(p => p.id === id)?.full_name || '?',
               count,
             })).sort((a, b) => b.count - a.count)
             setTasksByWorker(result)
           }
         } catch {}
 
-        // Recent issues (3 for pulse)
+        // Recent issues (3 for pulse, per location)
         try {
-          const { data: issueData } = await supabase.from('issues').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(3)
+          const { data: issueData } = await supabase.from('issues').select('id, title, status, created_at').eq('location_id', user!.location_id).order('created_at', { ascending: false }).limit(3)
           if (issueData) setRecentIssues(issueData)
         } catch {}
 
@@ -197,9 +204,9 @@ export default function Dashboard() {
           if (allIssueData) setAllIssues(allIssueData)
         } catch {}
 
-        // Today's losses (for pulse)
+        // Today's losses (for pulse, per location)
         try {
-          const { data: lossData } = await supabase.from('waste_logs').select('item_name, quantity, estimated_value, created_at').gte('created_at', todayStr)
+          const { data: lossData } = await supabase.from('waste_logs').select('item_name, quantity, estimated_value, created_at').eq('location_id', user!.location_id).gte('created_at', todayStr)
           if (lossData) {
             const totalValue = lossData.reduce((s: number, l: any) => s + (l.estimated_value || 0), 0)
             setTodayLosses({ count: lossData.length, names: lossData.slice(0, 3).map((l: any) => l.item_name), totalValue })
@@ -222,7 +229,11 @@ export default function Dashboard() {
             .not('hours_worked', 'is', null)
 
           if (monthClocks && monthClocks.length > 0) {
-            const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, hourly_rate, contract_type').eq('is_active', true)
+            // Only load profiles for workers who have clocked in (already filtered by location)
+            const clockWorkerIds = Array.from(new Set(monthClocks.map(c => c.worker_id).filter(Boolean)))
+            const { data: allProfiles } = clockWorkerIds.length > 0
+              ? await supabase.from('profiles').select('id, full_name, hourly_rate, contract_type').in('id', clockWorkerIds)
+              : { data: [] }
             const hoursMap: Record<string, number> = {}
             monthClocks.forEach(c => {
               if (c.worker_id) hoursMap[c.worker_id] = (hoursMap[c.worker_id] || 0) + (c.hours_worked || 0)

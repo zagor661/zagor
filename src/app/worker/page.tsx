@@ -127,9 +127,19 @@ export default function WorkerListPage() {
 
   // ─── Data Loading ──────────────────────────────────────
   async function loadWorkers() {
+    // Get worker IDs linked to this location
+    const { data: links } = await supabase
+      .from('user_locations')
+      .select('user_id')
+      .eq('location_id', user!.location_id)
+
+    const userIds = (links || []).map(l => l.user_id)
+    if (userIds.length === 0) { setWorkers([]); return }
+
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name, email, role, is_active, hourly_rate, contract_type, phone, address, pesel, bank_account, emergency_contact, hire_date, notes, avatar_url, position, date_of_birth, nip, contract_start, contract_end, shirt_size, shoe_size')
+      .in('id', userIds)
       .order('full_name')
 
     if (data) {

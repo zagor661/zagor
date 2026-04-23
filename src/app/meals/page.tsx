@@ -48,10 +48,20 @@ export default function MealsPage() {
   }, [user, selectedMonth, profiles])
 
   async function loadProfiles() {
+    // Only load profiles linked to this location
+    const { data: links } = await supabase
+      .from('user_locations')
+      .select('user_id')
+      .eq('location_id', user!.location_id)
+
+    const userIds = (links || []).map(l => l.user_id)
+    if (userIds.length === 0) { setProfiles({}); return }
+
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name')
       .eq('is_active', true)
+      .in('id', userIds)
     if (data) {
       const map: Record<string, string> = {}
       data.forEach(p => { map[p.id] = p.full_name })

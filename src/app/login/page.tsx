@@ -113,21 +113,13 @@ export default function LoginPage() {
       profileData = data || []
     }
 
-    // Fallback: if no user_locations exist yet, load all active profiles
-    // (backward compatibility for existing single-location setups)
-    if (profileData.length === 0) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role, pin')
-        .eq('is_active', true)
-        .order('full_name')
-      profileData = data || []
-    }
+    // No fallback — all profiles must be linked via user_locations
 
-    // Fetch star counts for belt colors
+    // Fetch star counts for belt colors (per location)
     const { data: stars } = await supabase
       .from('worker_stars')
       .select('profile_id')
+      .eq('location_id', locationId)
     const counts: Record<string, number> = {}
     if (stars) {
       for (const s of stars) {

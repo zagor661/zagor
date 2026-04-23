@@ -80,6 +80,7 @@ export default function FakturyPage() {
     const { data } = await supabase
       .from('invoices')
       .select('*')
+      .eq('location_id', user!.location_id)
       .order('invoice_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(100)
@@ -570,9 +571,13 @@ function AlertsTab({ invoices }: { invoices: Invoice[] }) {
 
   async function loadAllAlerts() {
     setLoadingAlerts(true)
+    // Filter via invoice IDs already loaded for this location
+    const invoiceIds = invoices.map(i => i.id)
+    if (invoiceIds.length === 0) { setAllItems([]); setLoadingAlerts(false); return }
     const { data } = await (await import('@/lib/supabase')).default
       .from('invoice_items')
       .select('*, invoices!inner(supplier_name, invoice_date)')
+      .in('invoice_id', invoiceIds)
       .in('price_alert', ['higher', 'lower'])
       .order('created_at', { ascending: false })
       .limit(50)

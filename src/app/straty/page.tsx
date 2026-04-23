@@ -81,10 +81,20 @@ export default function StratyPage() {
   }, [user, authLoading])
 
   async function loadWorkers() {
+    // Only load workers linked to this location
+    const { data: links } = await supabase
+      .from('user_locations')
+      .select('user_id')
+      .eq('location_id', user!.location_id)
+
+    const userIds = (links || []).map(l => l.user_id)
+    if (userIds.length === 0) { setWorkers([]); return }
+
     const { data } = await supabase
       .from('profiles')
       .select('id, full_name')
       .eq('is_active', true)
+      .in('id', userIds)
       .order('full_name')
     if (data) setWorkers(data as Worker[])
   }
