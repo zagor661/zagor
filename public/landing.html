@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>KitchenOps — System zarządzania gastronomią</title>
 <meta name="description" content="KitchenOps — nowoczesna aplikacja do zarządzania restauracją. Checklisty, grafik, HACCP, food cost, zespół w jednym miejscu.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👨‍🍳</text></svg>">
@@ -29,8 +29,6 @@ body {
   overflow-x: hidden; line-height: 1.6;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
-
-/* ─── SELECTION ─── */
 ::selection { background: var(--brand-100); color: var(--brand-900); }
 
 /* ─── NAV ─── */
@@ -45,14 +43,14 @@ body {
 .nav-inner {
   max-width: 1120px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 32px;
+  padding: 16px 24px;
 }
 .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .nav-logo .icon { font-size: 24px; }
 .nav-logo .text { font-size: 17px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
 .nav-right { display: flex; align-items: center; gap: 6px; }
 .nav-link {
-  padding: 8px 16px; border-radius: 10px; text-decoration: none;
+  padding: 8px 14px; border-radius: 10px; text-decoration: none;
   font-size: 13px; font-weight: 500; color: var(--gray-500);
   transition: all 0.2s; letter-spacing: -0.01em;
 }
@@ -74,9 +72,8 @@ body {
 
 /* ─── HERO ─── */
 .hero {
-  padding: 160px 32px 100px;
-  text-align: center; position: relative;
-  background: white;
+  padding: 160px 24px 100px;
+  text-align: center; position: relative; background: white;
 }
 .hero-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
@@ -90,9 +87,8 @@ body {
   animation: pulse 2.5s cubic-bezier(0.4,0,0.6,1) infinite;
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-
 .hero h1 {
-  font-size: clamp(44px, 7vw, 80px); font-weight: 900;
+  font-size: clamp(42px, 7vw, 80px); font-weight: 900;
   line-height: 1.0; color: var(--gray-950);
   letter-spacing: -0.04em; margin-bottom: 28px;
   max-width: 900px; margin-left: auto; margin-right: auto;
@@ -103,7 +99,7 @@ body {
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 .hero-desc {
-  font-size: clamp(17px, 2vw, 21px); font-weight: 400; color: var(--gray-400);
+  font-size: clamp(16px, 2vw, 21px); font-weight: 400; color: var(--gray-400);
   max-width: 520px; margin: 0 auto 48px; line-height: 1.65; letter-spacing: -0.01em;
 }
 .hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
@@ -124,9 +120,12 @@ body {
 
 /* ─── PHONE SHOWCASE ─── */
 .showcase {
-  padding: 20px 32px 120px;
-  display: flex; justify-content: center; gap: 28px; flex-wrap: wrap;
+  padding: 20px 24px 120px;
+  display: flex; justify-content: center; gap: 24px; flex-wrap: nowrap;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.showcase::-webkit-scrollbar { display: none; }
 .device {
   width: 260px; flex-shrink: 0;
   transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -146,9 +145,7 @@ body {
   background: var(--gray-900); border-radius: 0 0 16px 16px;
 }
 .device-screen { padding: 14px 16px 20px; }
-.device-title {
-  text-align: center; margin-bottom: 14px;
-}
+.device-title { text-align: center; margin-bottom: 14px; }
 .device-title .dt-icon { font-size: 22px; margin-bottom: 2px; }
 .device-title h3 { font-size: 14px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
 .device-title p { font-size: 10px; color: var(--gray-400); font-weight: 500; }
@@ -175,32 +172,24 @@ body {
   font-size: 12px; font-weight: 600; color: var(--gray-400); letter-spacing: -0.01em;
 }
 
-/* ─── DIVIDER ─── */
-.divider {
-  height: 1px; max-width: 120px; margin: 0 auto;
-  background: var(--gray-200);
-}
-
-/* ─── HOW IT WORKS ─── */
-.how {
-  padding: 120px 32px;
-  background: white;
-}
+/* ─── SECTION COMMONS ─── */
+.divider { height: 1px; max-width: 120px; margin: 0 auto; background: var(--gray-200); }
 .section-label {
   text-align: center; font-size: 12px; font-weight: 700;
   color: var(--brand-600); text-transform: uppercase;
   letter-spacing: 0.1em; margin-bottom: 16px;
 }
 .section-title {
-  text-align: center; font-size: clamp(32px, 4vw, 48px); font-weight: 900;
-  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px;
-  line-height: 1.1;
+  text-align: center; font-size: clamp(30px, 4vw, 48px); font-weight: 900;
+  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
 }
 .section-desc {
   text-align: center; font-size: 17px; color: var(--gray-400);
-  max-width: 480px; margin: 0 auto 72px; line-height: 1.6;
-  font-weight: 400;
+  max-width: 480px; margin: 0 auto 72px; line-height: 1.6; font-weight: 400;
 }
+
+/* ─── HOW IT WORKS ─── */
+.how { padding: 120px 24px; background: white; }
 .steps {
   max-width: 960px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px;
@@ -221,213 +210,335 @@ body {
 .step-num.n1 { background: var(--brand-50); color: var(--brand-500); }
 .step-num.n2 { background: #eff6ff; color: #3b82f6; }
 .step-num.n3 { background: #f0fdf4; color: #22c55e; }
-.step h3 {
-  font-size: 18px; font-weight: 800; color: var(--gray-900);
-  margin-bottom: 8px; letter-spacing: -0.02em;
-}
+.step h3 { font-size: 18px; font-weight: 800; color: var(--gray-900); margin-bottom: 8px; letter-spacing: -0.02em; }
 .step p { font-size: 14px; color: var(--gray-500); line-height: 1.6; max-width: 260px; margin: 0 auto; }
 
 /* ─── FEATURES ─── */
-.features {
-  padding: 120px 32px;
-  background: var(--gray-50);
-}
+.features { padding: 120px 24px; background: var(--gray-50); }
 .feat-grid {
   max-width: 1080px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
 }
 .feat-card {
-  background: white; border-radius: 20px; padding: 36px 28px;
+  background: white; border-radius: 20px; padding: 32px 24px;
   border: 1px solid var(--gray-100);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
 }
-.feat-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 24px 64px -16px rgba(0,0,0,0.08);
-  border-color: var(--gray-200);
-}
+.feat-card:hover { transform: translateY(-6px); box-shadow: 0 24px 64px -16px rgba(0,0,0,0.08); border-color: var(--gray-200); }
 .feat-icon {
   width: 52px; height: 52px; border-radius: 16px;
   display: flex; align-items: center; justify-content: center;
   font-size: 26px; margin-bottom: 20px;
 }
-.feat-card h3 {
-  font-size: 16px; font-weight: 800; color: var(--gray-900);
-  margin-bottom: 8px; letter-spacing: -0.02em;
-}
-.feat-card p {
-  font-size: 14px; color: var(--gray-500); line-height: 1.65;
-}
+.feat-card h3 { font-size: 16px; font-weight: 800; color: var(--gray-900); margin-bottom: 8px; letter-spacing: -0.02em; }
+.feat-card p { font-size: 14px; color: var(--gray-500); line-height: 1.65; }
 .feat-tag {
   display: inline-block; margin-top: 16px;
   padding: 4px 12px; border-radius: 6px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
-  text-transform: uppercase;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
 }
 
+/* ─── WOKI TALKIE DEMO ─── */
+.wt-section {
+  padding: 120px 24px;
+  background: var(--gray-950); color: white;
+  position: relative; overflow: hidden;
+}
+.wt-section::before {
+  content: ''; position: absolute; top: -200px; right: -200px;
+  width: 500px; height: 500px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(236,122,17,0.1) 0%, transparent 70%);
+}
+.wt-inner {
+  max-width: 1040px; margin: 0 auto; position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 340px; gap: 80px; align-items: center;
+}
+.wt-left {}
+.wt-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px; border-radius: 8px;
+  background: rgba(236,122,17,0.1); border: 1px solid rgba(236,122,17,0.2);
+  font-size: 11px; font-weight: 700; color: var(--brand-400);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.wt-left h2 {
+  font-size: clamp(28px, 4vw, 44px); font-weight: 900;
+  line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 20px;
+}
+.wt-left h2 .accent { color: var(--brand-400); }
+.wt-left > p { font-size: 16px; color: rgba(255,255,255,0.5); line-height: 1.7; margin-bottom: 32px; }
+.wt-features { display: flex; flex-direction: column; gap: 16px; }
+.wt-feat {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 20px; border-radius: 16px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+  transition: all 0.3s;
+}
+.wt-feat:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
+.wt-feat-icon {
+  width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.wt-feat h4 { font-size: 14px; font-weight: 700; color: white; margin-bottom: 4px; }
+.wt-feat p { font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.5; }
+
+/* ─── WOKI TALKIE PHONE ANIM ─── */
+.wt-phone {
+  width: 300px; margin: 0 auto;
+}
+.wt-phone-frame {
+  border-radius: 36px; border: 5px solid #2a2a2a;
+  background: #1a1a1a; overflow: hidden;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+}
+.wt-phone-notch {
+  width: 100px; height: 24px; margin: 0 auto;
+  background: #2a2a2a; border-radius: 0 0 16px 16px;
+}
+.wt-screen { padding: 16px; min-height: 460px; position: relative; }
+.wt-screen-header {
+  text-align: center; margin-bottom: 20px;
+}
+.wt-screen-header h3 { font-size: 16px; font-weight: 800; color: white; }
+.wt-screen-header p { font-size: 10px; color: rgba(255,255,255,0.35); }
+
+/* Chat messages */
+.wt-chat { display: flex; flex-direction: column; gap: 10px; min-height: 340px; }
+.wt-msg {
+  max-width: 85%; padding: 12px 16px; border-radius: 16px;
+  font-size: 12px; line-height: 1.5; opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  animation: msgIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.wt-msg.owner {
+  align-self: flex-end;
+  background: var(--brand-500); color: white;
+  border-bottom-right-radius: 6px;
+}
+.wt-msg.system {
+  align-self: center;
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
+  font-size: 10px; padding: 6px 14px; border-radius: 10px;
+  text-align: center;
+}
+.wt-msg.ai {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8);
+  border-bottom-left-radius: 6px;
+}
+
+/* Voice message special */
+.wt-voice {
+  align-self: flex-end;
+  background: var(--brand-500); color: white;
+  border-bottom-right-radius: 6px;
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+  opacity: 0; transform: translateY(12px) scale(0.96);
+  animation: msgIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  max-width: 85%; border-radius: 16px;
+}
+.wt-voice-wave {
+  display: flex; align-items: center; gap: 2px; height: 24px;
+}
+.wt-voice-wave span {
+  width: 3px; border-radius: 2px; background: rgba(255,255,255,0.7);
+  animation: wave 1.2s ease-in-out infinite;
+}
+.wt-voice-wave span:nth-child(1) { height: 8px; animation-delay: 0s; }
+.wt-voice-wave span:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+.wt-voice-wave span:nth-child(3) { height: 12px; animation-delay: 0.2s; }
+.wt-voice-wave span:nth-child(4) { height: 20px; animation-delay: 0.3s; }
+.wt-voice-wave span:nth-child(5) { height: 10px; animation-delay: 0.4s; }
+.wt-voice-wave span:nth-child(6) { height: 18px; animation-delay: 0.5s; }
+.wt-voice-wave span:nth-child(7) { height: 6px; animation-delay: 0.6s; }
+.wt-voice-wave span:nth-child(8) { height: 14px; animation-delay: 0.7s; }
+.wt-voice-wave span:nth-child(9) { height: 9px; animation-delay: 0.8s; }
+.wt-voice-wave span:nth-child(10) { height: 16px; animation-delay: 0.9s; }
+.wt-voice-dur { font-size: 11px; font-weight: 600; opacity: 0.8; white-space: nowrap; }
+
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1.3); }
+}
+
+/* AI processing indicator */
+.wt-processing {
+  align-self: flex-start; display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  opacity: 0; transform: translateY(12px);
+  animation: msgIn 0.3s ease forwards;
+  border-bottom-left-radius: 6px;
+}
+.wt-dots { display: flex; gap: 4px; }
+.wt-dots span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+.wt-dots span:nth-child(2) { animation-delay: 0.2s; }
+.wt-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.1); } }
+
+/* Task card extracted */
+.wt-task-card {
+  align-self: flex-start; max-width: 90%;
+  background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2);
+  border-radius: 14px; padding: 12px 16px;
+  opacity: 0; transform: translateY(12px) scale(0.96);
+  animation: msgIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.wt-task-card .tc-label {
+  font-size: 9px; font-weight: 700; color: #22c55e; text-transform: uppercase;
+  letter-spacing: 0.08em; margin-bottom: 6px;
+}
+.wt-task-card .tc-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: rgba(255,255,255,0.8); margin-bottom: 4px;
+}
+.wt-task-card .tc-check {
+  width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid rgba(34,197,94,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: #22c55e; flex-shrink: 0;
+}
+.wt-task-card .tc-item.done .tc-check { background: rgba(34,197,94,0.2); }
+
+@keyframes msgIn {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Replay button */
+.wt-replay {
+  display: block; margin: 16px auto 0; padding: 8px 20px; border-radius: 10px;
+  border: 1.5px solid rgba(255,255,255,0.1); background: transparent;
+  color: rgba(255,255,255,0.4); font-size: 12px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: all 0.2s;
+}
+.wt-replay:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
+
 /* ─── ROLES ─── */
-.roles { padding: 120px 32px; background: white; }
+.roles { padding: 120px 24px; background: white; }
 .roles-row {
   max-width: 960px; margin: 0 auto;
   display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
 }
 .role-pill {
   display: flex; align-items: center; gap: 12px;
-  padding: 20px 28px; border-radius: 18px;
+  padding: 20px 24px; border-radius: 18px;
   border: 1.5px solid var(--gray-100);
   transition: all 0.3s; cursor: default; background: white;
-  min-width: 170px;
+  min-width: 160px;
 }
 .role-pill:hover { border-color: var(--brand-200); transform: translateY(-3px); box-shadow: 0 12px 40px -8px rgba(0,0,0,0.06); }
 .role-emoji { font-size: 32px; }
 .role-info h4 { font-size: 15px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
 .role-info p { font-size: 12px; color: var(--gray-400); font-weight: 500; }
 
-/* ─── WOKI WOKI CASE STUDY ─── */
-.case-study {
-  padding: 120px 32px;
-  background: var(--gray-950);
-  color: white; position: relative; overflow: hidden;
-}
-.case-study::before {
-  content: ''; position: absolute; top: -300px; right: -200px;
-  width: 600px; height: 600px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(236,122,17,0.12) 0%, transparent 70%);
-}
-.case-study::after {
-  content: ''; position: absolute; bottom: -200px; left: -100px;
-  width: 400px; height: 400px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(236,122,17,0.06) 0%, transparent 70%);
-}
-.case-inner {
-  max-width: 960px; margin: 0 auto; position: relative; z-index: 1;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
-}
-.case-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px; border-radius: 8px;
-  background: rgba(236,122,17,0.12); border: 1px solid rgba(236,122,17,0.2);
-  font-size: 11px; font-weight: 700; color: var(--brand-400);
-  letter-spacing: 0.06em; text-transform: uppercase;
-  margin-bottom: 24px;
-}
-.case-left h2 {
-  font-size: clamp(28px, 4vw, 42px); font-weight: 900;
-  line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 20px;
-}
-.case-left h2 .brand-text { color: var(--brand-400); }
-.case-left > p {
-  font-size: 16px; color: rgba(255,255,255,0.5); line-height: 1.7; margin-bottom: 36px;
-}
-.case-stats {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
-}
-.case-stat-num {
-  font-size: 32px; font-weight: 900; color: var(--brand-400);
-  letter-spacing: -0.03em;
-}
-.case-stat-label { font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 500; margin-top: 2px; }
-.case-right {
-  display: flex; flex-direction: column; gap: 12px;
-}
-.case-quote {
-  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 18px; padding: 28px;
-}
-.case-quote p {
-  font-size: 16px; color: rgba(255,255,255,0.7); line-height: 1.7;
-  font-style: italic; margin-bottom: 16px;
-}
-.case-quote .cq-author {
-  display: flex; align-items: center; gap: 12px;
-}
-.case-quote .cq-avatar {
-  width: 40px; height: 40px; border-radius: 12px;
-  background: var(--brand-500); display: flex; align-items: center; justify-content: center;
-  font-size: 18px;
-}
-.case-quote .cq-name { font-size: 14px; font-weight: 700; color: white; }
-.case-quote .cq-role { font-size: 12px; color: rgba(255,255,255,0.4); }
-.case-modules {
-  display: flex; flex-wrap: wrap; gap: 6px;
-}
-.case-mod {
-  padding: 8px 16px; border-radius: 10px;
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
-  font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5);
-  display: flex; align-items: center; gap: 6px;
-}
-
-/* ─── BOTTOM STATS ─── */
-.numbers {
-  padding: 80px 32px;
-  background: white; border-top: 1px solid var(--gray-100);
-}
+/* ─── NUMBERS ─── */
+.numbers { padding: 80px 24px; background: white; border-top: 1px solid var(--gray-100); }
 .numbers-row {
   max-width: 900px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
   text-align: center;
 }
-.num-big {
-  font-size: 44px; font-weight: 900; color: var(--gray-900);
-  letter-spacing: -0.04em; line-height: 1;
-}
+.num-big { font-size: 44px; font-weight: 900; color: var(--gray-900); letter-spacing: -0.04em; line-height: 1; }
 .num-big.accent { color: var(--brand-500); }
-.num-label {
-  font-size: 13px; color: var(--gray-400); font-weight: 500; margin-top: 6px;
+.num-label { font-size: 13px; color: var(--gray-400); font-weight: 500; margin-top: 6px; }
+
+/* ─── VIDEO PLACEHOLDER ─── */
+.video-section { padding: 120px 24px; background: var(--gray-50); }
+.video-card {
+  max-width: 800px; margin: 0 auto;
+  border-radius: 24px; overflow: hidden;
+  background: var(--gray-900);
+  box-shadow: 0 40px 80px -20px rgba(0,0,0,0.2);
+  position: relative; aspect-ratio: 16/9;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: transform 0.3s;
+}
+.video-card:hover { transform: scale(1.01); }
+.video-play {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid rgba(255,255,255,0.2);
+  transition: all 0.3s;
+}
+.video-card:hover .video-play { background: var(--brand-500); border-color: var(--brand-500); transform: scale(1.1); }
+.video-play-icon {
+  width: 0; height: 0; margin-left: 4px;
+  border-top: 14px solid transparent; border-bottom: 14px solid transparent;
+  border-left: 22px solid white;
+}
+.video-label {
+  position: absolute; bottom: 24px; left: 0; right: 0;
+  text-align: center; font-size: 14px; font-weight: 600;
+  color: rgba(255,255,255,0.5);
 }
 
 /* ─── CTA ─── */
-.cta-section {
-  padding: 120px 32px;
-  text-align: center; background: var(--gray-50);
-}
+.cta-section { padding: 120px 24px; text-align: center; background: white; }
 .cta-section h2 {
   font-size: clamp(32px, 5vw, 52px); font-weight: 900;
-  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px;
-  line-height: 1.1;
+  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
 }
 .cta-section p {
   font-size: 17px; color: var(--gray-400); margin-bottom: 40px;
   max-width: 420px; margin-left: auto; margin-right: auto;
 }
 .cta-section .btn-primary {
-  background: var(--brand-500);
-  box-shadow: 0 8px 32px rgba(236,122,17,0.2);
+  background: var(--brand-500); box-shadow: 0 8px 32px rgba(236,122,17,0.2);
 }
 .cta-section .btn-primary:hover {
-  background: var(--brand-600);
-  box-shadow: 0 16px 48px rgba(236,122,17,0.3);
+  background: var(--brand-600); box-shadow: 0 16px 48px rgba(236,122,17,0.3);
 }
 
 /* ─── FOOTER ─── */
-.footer {
-  padding: 32px; text-align: center;
-  border-top: 1px solid var(--gray-100);
-}
+.footer { padding: 32px 24px; text-align: center; border-top: 1px solid var(--gray-100); }
 .footer p { font-size: 13px; color: var(--gray-400); }
 .footer a { color: var(--gray-500); text-decoration: none; font-weight: 600; }
 .footer a:hover { color: var(--brand-500); }
 
-/* ─── MOBILE ─── */
-@media (max-width: 900px) {
+/* ─── RESPONSIVE ─── */
+@media (max-width: 1024px) {
+  .wt-inner { grid-template-columns: 1fr; gap: 48px; }
+  .wt-phone { width: 280px; }
   .feat-grid { grid-template-columns: repeat(2, 1fr); }
-  .steps { grid-template-columns: 1fr; gap: 40px; }
-  .steps::before { display: none; }
-  .case-inner { grid-template-columns: 1fr; gap: 48px; }
-  .numbers-row { grid-template-columns: repeat(2, 1fr); gap: 24px; }
 }
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .nav-inner { padding: 14px 16px; }
   .nav-link { display: none; }
-  .hero { padding: 130px 20px 80px; }
-  .feat-grid { grid-template-columns: 1fr; }
-  .showcase { gap: 16px; padding: 20px 16px 80px; }
-  .device { width: 220px; }
+  .hero { padding: 130px 20px 70px; }
+  .hero-actions { flex-direction: column; align-items: center; }
+  .btn-primary, .btn-ghost { width: 100%; max-width: 320px; text-align: center; }
+  .showcase { gap: 16px; padding: 20px 16px 80px; justify-content: flex-start; }
+  .device { width: 230px; }
   .device:nth-child(1) { transform: translateY(10px); }
   .device:nth-child(3) { transform: translateY(20px); }
-  .roles-row { flex-direction: column; align-items: center; }
-  .case-stats { grid-template-columns: repeat(3, 1fr); }
+  .steps { grid-template-columns: 1fr; gap: 40px; }
+  .steps::before { display: none; }
+  .feat-grid { grid-template-columns: 1fr; gap: 12px; }
+  .feat-card { padding: 24px 20px; }
+  .roles-row { gap: 8px; }
+  .role-pill { min-width: 140px; padding: 16px 18px; }
+  .numbers-row { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .wt-inner { gap: 40px; }
+  .wt-phone { width: 260px; }
+  .wt-left h2 { font-size: 28px; }
+  .section-desc { margin-bottom: 48px; font-size: 15px; }
+  .video-card { border-radius: 16px; }
+}
+@media (max-width: 480px) {
+  .hero h1 { font-size: 36px; }
+  .hero-desc { font-size: 15px; }
+  .showcase { gap: 12px; }
+  .device { width: 200px; }
+  .role-pill { width: 100%; }
+  .num-big { font-size: 36px; }
+  .wt-phone { width: 240px; }
+  .wt-feat { padding: 16px; }
 }
 
 /* ─── ANIMATIONS ─── */
@@ -453,7 +564,7 @@ body {
     <div class="nav-right">
       <a href="#how" class="nav-link" data-pl="Jak to działa" data-en="How it works">Jak to działa</a>
       <a href="#features" class="nav-link" data-pl="Moduły" data-en="Modules">Moduły</a>
-      <a href="#casestudy" class="nav-link">WOKI WOKI</a>
+      <a href="#wokitalkie" class="nav-link">WOKI TALKIE</a>
       <button class="lang-btn" onclick="toggleLang()" id="langBtn">EN</button>
       <a href="/login" class="nav-cta" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a>
     </div>
@@ -485,7 +596,6 @@ body {
 
 <!-- ━━━ PHONE SHOWCASE ━━━ -->
 <div class="showcase reveal">
-  <!-- Phone 1: Dashboard -->
   <div class="device">
     <div class="device-frame">
       <div class="device-notch"></div>
@@ -497,42 +607,28 @@ body {
         </div>
         <div class="d-card">
           <div class="d-card-icon" style="background:#f0fdf4">✅</div>
-          <div class="d-card-text">
-            <h4>Checklist</h4>
-            <p data-pl="12/14 zadań" data-en="12/14 tasks">12/14 zadań</p>
-          </div>
+          <div class="d-card-text"><h4>Checklist</h4><p data-pl="12/14 zadań" data-en="12/14 tasks">12/14 zadań</p></div>
           <span class="d-badge" style="background:#dcfce7;color:#166534">86%</span>
         </div>
         <div class="d-card">
           <div class="d-card-icon" style="background:#fef3c7">📋</div>
-          <div class="d-card-text">
-            <h4 data-pl="Zadania" data-en="Tasks">Zadania</h4>
-            <p data-pl="3 oczekujące" data-en="3 pending">3 oczekujące</p>
-          </div>
+          <div class="d-card-text"><h4 data-pl="Zadania" data-en="Tasks">Zadania</h4><p data-pl="3 oczekujące" data-en="3 pending">3 oczekujące</p></div>
           <span class="d-badge" style="background:#fef9c3;color:#854d0e">3</span>
         </div>
         <div class="d-card">
           <div class="d-card-icon" style="background:#ede9fe">🌡️</div>
-          <div class="d-card-text">
-            <h4 data-pl="Temperatury" data-en="Temperatures">Temperatury</h4>
-            <p data-pl="Wszystkie OK" data-en="All OK">Wszystkie OK</p>
-          </div>
+          <div class="d-card-text"><h4 data-pl="Temperatury" data-en="Temperatures">Temperatury</h4><p data-pl="Wszystkie OK" data-en="All OK">Wszystkie OK</p></div>
           <span class="d-badge" style="background:#dcfce7;color:#166534">OK</span>
         </div>
         <div class="d-card">
           <div class="d-card-icon" style="background:#fff7ed">💰</div>
-          <div class="d-card-text">
-            <h4>Food Cost</h4>
-            <p data-pl="28.4% ten tydzień" data-en="28.4% this week">28.4% ten tydzień</p>
-          </div>
+          <div class="d-card-text"><h4>Food Cost</h4><p data-pl="28.4% ten tydzień" data-en="28.4% this week">28.4% ten tydzień</p></div>
           <span class="d-badge" style="background:#dcfce7;color:#166534">↓2%</span>
         </div>
       </div>
     </div>
     <div class="device-label" data-pl="Panel właściciela" data-en="Owner panel">Panel właściciela</div>
   </div>
-
-  <!-- Phone 2: Checklist -->
   <div class="device">
     <div class="device-frame">
       <div class="device-notch"></div>
@@ -542,47 +638,15 @@ body {
           <h3>Checklist</h3>
           <p data-pl="Zmiana poranna" data-en="Morning shift">Zmiana poranna</p>
         </div>
-        <div class="d-card" style="border-left:3px solid #22c55e">
-          <div class="d-card-text">
-            <h4 data-pl="Sprawdź temperatury lodówek" data-en="Check fridge temps">Sprawdź temperatury lodówek</h4>
-            <p>06:15</p>
-          </div>
-          <span style="color:#22c55e;font-weight:800">✓</span>
-        </div>
-        <div class="d-card" style="border-left:3px solid #22c55e">
-          <div class="d-card-text">
-            <h4 data-pl="Przygotuj mise en place" data-en="Prepare mise en place">Przygotuj mise en place</h4>
-            <p>07:00</p>
-          </div>
-          <span style="color:#22c55e;font-weight:800">✓</span>
-        </div>
-        <div class="d-card" style="border-left:3px solid var(--brand-400)">
-          <div class="d-card-text">
-            <h4 data-pl="Przyjmij dostawę" data-en="Receive delivery">Przyjmij dostawę</h4>
-            <p>08:30</p>
-          </div>
-          <span style="color:var(--gray-300)">○</span>
-        </div>
-        <div class="d-card" style="border-left:3px solid var(--gray-200)">
-          <div class="d-card-text">
-            <h4 data-pl="Uzupełnij stanowiska" data-en="Stock stations">Uzupełnij stanowiska</h4>
-            <p>09:00</p>
-          </div>
-          <span style="color:var(--gray-300)">○</span>
-        </div>
-        <div class="d-card" style="border-left:3px solid var(--gray-200)">
-          <div class="d-card-text">
-            <h4 data-pl="Sprawdź dania dnia" data-en="Check daily specials">Sprawdź dania dnia</h4>
-            <p>09:30</p>
-          </div>
-          <span style="color:var(--gray-300)">○</span>
-        </div>
+        <div class="d-card" style="border-left:3px solid #22c55e"><div class="d-card-text"><h4 data-pl="Sprawdź temperatury lodówek" data-en="Check fridge temps">Sprawdź temperatury lodówek</h4><p>06:15</p></div><span style="color:#22c55e;font-weight:800">✓</span></div>
+        <div class="d-card" style="border-left:3px solid #22c55e"><div class="d-card-text"><h4 data-pl="Przygotuj mise en place" data-en="Prepare mise en place">Przygotuj mise en place</h4><p>07:00</p></div><span style="color:#22c55e;font-weight:800">✓</span></div>
+        <div class="d-card" style="border-left:3px solid var(--brand-400)"><div class="d-card-text"><h4 data-pl="Przyjmij dostawę" data-en="Receive delivery">Przyjmij dostawę</h4><p>08:30</p></div><span style="color:var(--gray-300)">○</span></div>
+        <div class="d-card" style="border-left:3px solid var(--gray-200)"><div class="d-card-text"><h4 data-pl="Uzupełnij stanowiska" data-en="Stock stations">Uzupełnij stanowiska</h4><p>09:00</p></div><span style="color:var(--gray-300)">○</span></div>
+        <div class="d-card" style="border-left:3px solid var(--gray-200)"><div class="d-card-text"><h4 data-pl="Sprawdź dania dnia" data-en="Check daily specials">Sprawdź dania dnia</h4><p>09:30</p></div><span style="color:var(--gray-300)">○</span></div>
       </div>
     </div>
     <div class="device-label" data-pl="Widok kucharza" data-en="Chef view">Widok kucharza</div>
   </div>
-
-  <!-- Phone 3: HACCP -->
   <div class="device">
     <div class="device-frame">
       <div class="device-notch"></div>
@@ -592,38 +656,10 @@ body {
           <h3>HACCP</h3>
           <p data-pl="Kontrola sanitarna" data-en="Sanitary control">Kontrola sanitarna</p>
         </div>
-        <div class="d-card">
-          <div class="d-card-icon" style="background:#f0fdf4">🌡️</div>
-          <div class="d-card-text">
-            <h4 data-pl="Temperatury" data-en="Temperatures">Temperatury</h4>
-            <p data-pl="5 urządzeń — OK" data-en="5 devices — OK">5 urządzeń — OK</p>
-          </div>
-          <span class="d-badge" style="background:#dcfce7;color:#166534">✓</span>
-        </div>
-        <div class="d-card">
-          <div class="d-card-icon" style="background:#eff6ff">🧹</div>
-          <div class="d-card-text">
-            <h4 data-pl="Sprzątanie" data-en="Cleaning">Sprzątanie</h4>
-            <p data-pl="8 stref na dziś" data-en="8 zones today">8 stref na dziś</p>
-          </div>
-          <span class="d-badge" style="background:#dbeafe;color:#1e40af">6/8</span>
-        </div>
-        <div class="d-card">
-          <div class="d-card-icon" style="background:#fef3c7">📦</div>
-          <div class="d-card-text">
-            <h4 data-pl="Dostawy" data-en="Deliveries">Dostawy</h4>
-            <p data-pl="2 przyjęte" data-en="2 received">2 przyjęte</p>
-          </div>
-          <span class="d-badge" style="background:#dcfce7;color:#166534">✓</span>
-        </div>
-        <div class="d-card">
-          <div class="d-card-icon" style="background:#fef2f2">📊</div>
-          <div class="d-card-text">
-            <h4 data-pl="Raport Sanepid" data-en="Inspection report">Raport Sanepid</h4>
-            <p data-pl="96 punktów kontroli" data-en="96 checkpoints">96 punktów kontroli</p>
-          </div>
-          <span class="d-badge" style="background:#f0fdf4;color:#166534">PDF</span>
-        </div>
+        <div class="d-card"><div class="d-card-icon" style="background:#f0fdf4">🌡️</div><div class="d-card-text"><h4 data-pl="Temperatury" data-en="Temperatures">Temperatury</h4><p data-pl="5 urządzeń — OK" data-en="5 devices — OK">5 urządzeń — OK</p></div><span class="d-badge" style="background:#dcfce7;color:#166534">✓</span></div>
+        <div class="d-card"><div class="d-card-icon" style="background:#eff6ff">🧹</div><div class="d-card-text"><h4 data-pl="Sprzątanie" data-en="Cleaning">Sprzątanie</h4><p data-pl="8 stref na dziś" data-en="8 zones today">8 stref na dziś</p></div><span class="d-badge" style="background:#dbeafe;color:#1e40af">6/8</span></div>
+        <div class="d-card"><div class="d-card-icon" style="background:#fef3c7">📦</div><div class="d-card-text"><h4 data-pl="Dostawy" data-en="Deliveries">Dostawy</h4><p data-pl="2 przyjęte" data-en="2 received">2 przyjęte</p></div><span class="d-badge" style="background:#dcfce7;color:#166534">✓</span></div>
+        <div class="d-card"><div class="d-card-icon" style="background:#fef2f2">📊</div><div class="d-card-text"><h4 data-pl="Raport Sanepid" data-en="Inspection report">Raport Sanepid</h4><p data-pl="96 punktów kontroli" data-en="96 checkpoints">96 punktów kontroli</p></div><span class="d-badge" style="background:#f0fdf4;color:#166534">PDF</span></div>
       </div>
     </div>
     <div class="device-label">HACCP & Sanepid</div>
@@ -636,36 +672,23 @@ body {
   <div class="reveal">
     <div class="section-label" data-pl="Jak to działa" data-en="How it works">Jak to działa</div>
     <h2 class="section-title" data-pl="Gotowy w 5 minut" data-en="Ready in 5 minutes">Gotowy w 5 minut</h2>
-    <p class="section-desc"
-       data-pl="Trzy kroki i Twoja restauracja działa w systemie. Żadnych szkoleń, żadnych instalacji."
-       data-en="Three steps and your restaurant is in the system. No training, no installs.">
-      Trzy kroki i Twoja restauracja działa w systemie. Żadnych szkoleń, żadnych instalacji.
-    </p>
+    <p class="section-desc" data-pl="Trzy kroki i Twoja restauracja działa w systemie. Żadnych szkoleń, żadnych instalacji." data-en="Three steps and your restaurant is in the system. No training, no installs.">Trzy kroki i Twoja restauracja działa w systemie. Żadnych szkoleń, żadnych instalacji.</p>
   </div>
   <div class="steps">
     <div class="step reveal reveal-delay-1">
       <div class="step-num n1">1</div>
       <h3 data-pl="Stwórz lokal" data-en="Create venue">Stwórz lokal</h3>
-      <p data-pl="Podaj nazwę, adres i typ — restauracja, bar, kawiarnia czy club. System jest gotowy w 30 sekund."
-         data-en="Enter name, address and type — restaurant, bar, café or club. System is ready in 30 seconds.">
-        Podaj nazwę, adres i typ — restauracja, bar, kawiarnia czy club. System jest gotowy w 30 sekund.
-      </p>
+      <p data-pl="Podaj nazwę, adres i typ — restauracja, bar, kawiarnia czy club. System jest gotowy w 30 sekund." data-en="Enter name, address and type — restaurant, bar, café or club. System is ready in 30 seconds.">Podaj nazwę, adres i typ — restauracja, bar, kawiarnia czy club. System jest gotowy w 30 sekund.</p>
     </div>
     <div class="step reveal reveal-delay-2">
       <div class="step-num n2">2</div>
       <h3 data-pl="Dodaj zespół" data-en="Add your team">Dodaj zespół</h3>
-      <p data-pl="Wpisz imiona, przydziel role (kuchnia, sala, bar, menedżer) i wybierz moduły jakie widzi każdy pracownik."
-         data-en="Enter names, assign roles (kitchen, hall, bar, manager) and choose which modules each worker sees.">
-        Wpisz imiona, przydziel role (kuchnia, sala, bar, menedżer) i wybierz moduły jakie widzi każdy pracownik.
-      </p>
+      <p data-pl="Wpisz imiona, przydziel role (kuchnia, sala, bar, menedżer) i wybierz moduły jakie widzi każdy pracownik." data-en="Enter names, assign roles (kitchen, hall, bar, manager) and choose which modules each worker sees.">Wpisz imiona, przydziel role (kuchnia, sala, bar, menedżer) i wybierz moduły jakie widzi każdy pracownik.</p>
     </div>
     <div class="step reveal reveal-delay-3">
       <div class="step-num n3">3</div>
       <h3 data-pl="Zarządzaj" data-en="Manage">Zarządzaj</h3>
-      <p data-pl="Pracownicy logują się PINem na telefonie. Ty widzisz wszystko w czasie rzeczywistym — z dowolnego miejsca."
-         data-en="Workers log in with a PIN on their phone. You see everything in real time — from anywhere.">
-        Pracownicy logują się PINem na telefonie. Ty widzisz wszystko w czasie rzeczywistym — z dowolnego miejsca.
-      </p>
+      <p data-pl="Pracownicy logują się PINem na telefonie. Ty widzisz wszystko w czasie rzeczywistym — z dowolnego miejsca." data-en="Workers log in with a PIN on their phone. You see everything in real time — from anywhere.">Pracownicy logują się PINem na telefonie. Ty widzisz wszystko w czasie rzeczywistym — z dowolnego miejsca.</p>
     </div>
   </div>
 </section>
@@ -675,225 +698,116 @@ body {
   <div class="reveal">
     <div class="section-label" data-pl="Moduły" data-en="Modules">Moduły</div>
     <h2 class="section-title" data-pl="Wszystko w jednym miejscu" data-en="Everything in one place">Wszystko w jednym miejscu</h2>
-    <p class="section-desc"
-       data-pl="18 modułów zaprojektowanych dla gastronomii. Właściciel włącza tylko te, których potrzebuje."
-       data-en="18 modules designed for gastronomy. Owner enables only those they need.">
-      18 modułów zaprojektowanych dla gastronomii. Właściciel włącza tylko te, których potrzebuje.
-    </p>
+    <p class="section-desc" data-pl="18 modułów zaprojektowanych dla gastronomii. Właściciel włącza tylko te, których potrzebuje." data-en="18 modules designed for gastronomy. Owner enables only those they need.">18 modułów zaprojektowanych dla gastronomii. Właściciel włącza tylko te, których potrzebuje.</p>
   </div>
   <div class="feat-grid">
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:var(--brand-50)">✅</div>
-      <h3 data-pl="Checklist zmianowy" data-en="Shift Checklist">Checklist zmianowy</h3>
-      <p data-pl="Osobne listy na zmianę poranną i wieczorną. Pracownik odhacza punkt po punkcie — właściciel widzi postęp na żywo w dashboardzie. Konfigurowalne per lokal."
-         data-en="Separate lists for morning and evening shifts. Workers check off point by point — owner sees live progress on dashboard. Configurable per venue.">
-        Osobne listy na zmianę poranną i wieczorną. Pracownik odhacza punkt po punkcie — właściciel widzi postęp na żywo w dashboardzie. Konfigurowalne per lokal.
+    <div class="feat-card reveal"><div class="feat-icon" style="background:var(--brand-50)">✅</div><h3 data-pl="Checklist zmianowy" data-en="Shift Checklist">Checklist zmianowy</h3><p data-pl="Osobne listy na zmianę poranną i wieczorną. Pracownik odhacza punkt po punkcie — właściciel widzi postęp na żywo w dashboardzie. Konfigurowalne per lokal." data-en="Separate lists for morning and evening shifts. Workers check off point by point — owner sees live progress on dashboard. Configurable per venue.">Osobne listy na zmianę poranną i wieczorną. Pracownik odhacza punkt po punkcie — właściciel widzi postęp na żywo w dashboardzie. Konfigurowalne per lokal.</p><span class="feat-tag" style="background:var(--brand-50);color:var(--brand-600)" data-pl="Operacje" data-en="Operations">Operacje</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#eff6ff">📋</div><h3 data-pl="Zadania" data-en="Tasks">Zadania</h3><p data-pl="Przydzielaj zadania konkretnym osobom z priorytetem i terminem. Push notification na telefon pracownika. Śledzenie statusu: nowe → w toku → gotowe." data-en="Assign tasks to specific people with priority and deadline. Push notification to worker's phone. Status tracking: new → in progress → done.">Przydzielaj zadania konkretnym osobom z priorytetem i terminem. Push notification na telefon pracownika. Śledzenie statusu: nowe → w toku → gotowe.</p><span class="feat-tag" style="background:#eff6ff;color:#2563eb" data-pl="Operacje" data-en="Operations">Operacje</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#f0fdf4">📅</div><h3 data-pl="Grafik pracy" data-en="Work Schedule">Grafik pracy</h3><p data-pl="Grafik tygodniowy z widokiem dziennym. Import z Google Sheets jednym kliknięciem. Pracownicy widzą tylko swoje zmiany — zero nieporozumień." data-en="Weekly schedule with daily view. Import from Google Sheets with one click. Workers see only their shifts — zero confusion.">Grafik tygodniowy z widokiem dziennym. Import z Google Sheets jednym kliknięciem. Pracownicy widzą tylko swoje zmiany — zero nieporozumień.</p><span class="feat-tag" style="background:#f0fdf4;color:#16a34a" data-pl="Zespół" data-en="Team">Zespół</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#fef3c7">🌡️</div><h3 data-pl="Temperatury HACCP" data-en="HACCP Temperatures">Temperatury HACCP</h3><p data-pl="Kontrola temperatur lodówek, zamrażarek i pieców 2x dziennie. Automatyczny alert gdy wartość wyjdzie poza normę. Pełna historia pomiarów dla Sanepidu." data-en="Fridge, freezer and oven temperature checks 2x daily. Auto alert when value exceeds norm. Full measurement history for inspections.">Kontrola temperatur lodówek, zamrażarek i pieców 2x dziennie. Automatyczny alert gdy wartość wyjdzie poza normę. Pełna historia pomiarów dla Sanepidu.</p><span class="feat-tag" style="background:#fef3c7;color:#b45309">HACCP</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#fce7f3">💰</div><h3 data-pl="Food Cost" data-en="Food Cost">Food Cost</h3><p data-pl="Podłącz arkusz Excel z cenami surowców. System automatycznie policzy procent food costu i porówna ceny na fakturach. Widzisz dokładnie ile zarabiasz na każdym daniu." data-en="Connect an Excel sheet with ingredient prices. System auto-calculates food cost percentage and compares invoice prices. See exactly how much you earn on each dish.">Podłącz arkusz Excel z cenami surowców. System automatycznie policzy procent food costu i porówna ceny na fakturach. Widzisz dokładnie ile zarabiasz na każdym daniu.</p><span class="feat-tag" style="background:#fce7f3;color:#be185d" data-pl="Finanse" data-en="Finance">Finanse</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#ede9fe">🧾</div><h3 data-pl="Faktury OCR" data-en="Invoice OCR">Faktury OCR</h3><p data-pl="Zrób zdjęcie faktury telefonem — sztuczna inteligencja odczyta pozycje, ceny i dostawcę. Automatyczne porównanie z cenami food cost. Koniec ręcznego wpisywania." data-en="Take a photo of an invoice — AI reads items, prices and supplier. Auto comparison with food cost prices. No more manual entry.">Zrób zdjęcie faktury telefonem — sztuczna inteligencja odczyta pozycje, ceny i dostawcę. Automatyczne porównanie z cenami food cost. Koniec ręcznego wpisywania.</p><span class="feat-tag" style="background:#ede9fe;color:#7c3aed">AI</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#ecfdf5">🧹</div><h3 data-pl="Sprzątanie" data-en="Cleaning">Sprzątanie</h3><p data-pl="Zdefiniuj strefy i częstotliwość — codziennie, co tydzień, co miesiąc. Pracownicy odhaczają ze zdjęciem. Historia do wglądu przy kontroli Sanepidu." data-en="Define zones and frequency — daily, weekly, monthly. Workers check off with photo. History available for inspections.">Zdefiniuj strefy i częstotliwość — codziennie, co tydzień, co miesiąc. Pracownicy odhaczają ze zdjęciem. Historia do wglądu przy kontroli Sanepidu.</p><span class="feat-tag" style="background:#ecfdf5;color:#059669">HACCP</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#fef2f2">⭐</div><h3 data-pl="System gwiazdek" data-en="Star System">System gwiazdek</h3><p data-pl="Nagradzaj najlepszych pracowników gwiazdkami. System pasów kolorów jak w karate — od żółtego do czarnego. Widoczne na ekranie logowania — motywacja od samego startu." data-en="Reward top workers with stars. Belt color system like karate — from yellow to black. Visible on login screen — motivation from the start.">Nagradzaj najlepszych pracowników gwiazdkami. System pasów kolorów jak w karate — od żółtego do czarnego. Widoczne na ekranie logowania — motywacja od samego startu.</p><span class="feat-tag" style="background:#fef2f2;color:#dc2626" data-pl="Zespół" data-en="Team">Zespół</span></div>
+    <div class="feat-card reveal"><div class="feat-icon" style="background:#fff7ed">📡</div><h3 data-pl="Raport dzienny" data-en="Daily Report">Raport dzienny</h3><p data-pl="Automatyczne podsumowanie dnia: co zrobiono, co pominięto, ile strat, jakie temperatury. Generowany o północy — rano masz pełen obraz." data-en="Automatic daily summary: what was done, what was skipped, losses, temperatures. Generated at midnight — full picture in the morning.">Automatyczne podsumowanie dnia: co zrobiono, co pominięto, ile strat, jakie temperatury. Generowany o północy — rano masz pełen obraz.</p><span class="feat-tag" style="background:#fff7ed;color:var(--brand-600)" data-pl="Raporty" data-en="Reports">Raporty</span></div>
+  </div>
+</section>
+
+<!-- ━━━ WOKI TALKIE ━━━ -->
+<section class="wt-section" id="wokitalkie">
+  <div class="wt-inner reveal">
+    <div class="wt-left">
+      <div class="wt-badge">
+        <span>📡</span>
+        <span data-pl="Wbudowany komunikator" data-en="Built-in communicator">Wbudowany komunikator</span>
+      </div>
+      <h2>
+        <span class="accent">WOKI TALKIE</span><br>
+        <span data-pl="Mów, a AI zrobi resztę." data-en="Speak, AI does the rest.">Mów, a AI zrobi resztę.</span>
+      </h2>
+      <p data-pl="Wbudowany komunikator głosowy i tekstowy — nie potrzebujesz WhatsAppa ani Messengera. Nagraj wiadomość głosową, a sztuczna inteligencja automatycznie ją transkrybuje i wyciąga z niej zadania do przydzielenia."
+         data-en="Built-in voice and text communicator — no WhatsApp or Messenger needed. Record a voice message, and AI automatically transcribes it and extracts actionable tasks.">
+        Wbudowany komunikator głosowy i tekstowy — nie potrzebujesz WhatsAppa ani Messengera. Nagraj wiadomość głosową, a sztuczna inteligencja automatycznie ją transkrybuje i wyciąga z niej zadania do przydzielenia.
       </p>
-      <span class="feat-tag" style="background:var(--brand-50);color:var(--brand-600)" data-pl="Operacje" data-en="Operations">Operacje</span>
+      <div class="wt-features">
+        <div class="wt-feat">
+          <div class="wt-feat-icon" style="background:rgba(236,122,17,0.15)">🎙️</div>
+          <div>
+            <h4 data-pl="Wiadomości głosowe" data-en="Voice messages">Wiadomości głosowe</h4>
+            <p data-pl="Nagraj i wyślij jednym kliknięciem. Działa jak krótkofalówka — szybko i bez pisania." data-en="Record and send with one tap. Works like a walkie-talkie — fast, no typing.">Nagraj i wyślij jednym kliknięciem. Działa jak krótkofalówka — szybko i bez pisania.</p>
+          </div>
+        </div>
+        <div class="wt-feat">
+          <div class="wt-feat-icon" style="background:rgba(139,92,246,0.15)">🤖</div>
+          <div>
+            <h4 data-pl="Transkrypcja AI (Whisper)" data-en="AI Transcription (Whisper)">Transkrypcja AI (Whisper)</h4>
+            <p data-pl="Każde nagranie jest automatycznie zamieniane na tekst przez OpenAI Whisper. Tekst widoczny pod nagraniem." data-en="Every recording is automatically converted to text by OpenAI Whisper. Text visible below the recording.">Każde nagranie jest automatycznie zamieniane na tekst przez OpenAI Whisper. Tekst widoczny pod nagraniem.</p>
+          </div>
+        </div>
+        <div class="wt-feat">
+          <div class="wt-feat-icon" style="background:rgba(34,197,94,0.15)">✅</div>
+          <div>
+            <h4 data-pl="Auto-wyciąganie zadań" data-en="Auto task extraction">Auto-wyciąganie zadań</h4>
+            <p data-pl="GPT analizuje transkrypcję i automatycznie tworzy zadania z przypisaniem do pracownika. Zero ręcznej pracy." data-en="GPT analyzes the transcription and automatically creates tasks assigned to workers. Zero manual work.">GPT analizuje transkrypcję i automatycznie tworzy zadania z przypisaniem do pracownika. Zero ręcznej pracy.</p>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#eff6ff">📋</div>
-      <h3 data-pl="Zadania" data-en="Tasks">Zadania</h3>
-      <p data-pl="Przydzielaj zadania konkretnym osobom z priorytetem i terminem. Push notification na telefon pracownika. Śledzenie statusu: nowe → w toku → gotowe."
-         data-en="Assign tasks to specific people with priority and deadline. Push notification to worker's phone. Status tracking: new → in progress → done.">
-        Przydzielaj zadania konkretnym osobom z priorytetem i terminem. Push notification na telefon pracownika. Śledzenie statusu: nowe → w toku → gotowe.
-      </p>
-      <span class="feat-tag" style="background:#eff6ff;color:#2563eb" data-pl="Operacje" data-en="Operations">Operacje</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#f0fdf4">📅</div>
-      <h3 data-pl="Grafik pracy" data-en="Work Schedule">Grafik pracy</h3>
-      <p data-pl="Grafik tygodniowy z widokiem dziennym. Import z Google Sheets jednym kliknięciem. Pracownicy widzą tylko swoje zmiany — zero nieporozumień."
-         data-en="Weekly schedule with daily view. Import from Google Sheets with one click. Workers see only their shifts — zero confusion.">
-        Grafik tygodniowy z widokiem dziennym. Import z Google Sheets jednym kliknięciem. Pracownicy widzą tylko swoje zmiany — zero nieporozumień.
-      </p>
-      <span class="feat-tag" style="background:#f0fdf4;color:#16a34a" data-pl="Zespół" data-en="Team">Zespół</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#fef3c7">🌡️</div>
-      <h3 data-pl="Temperatury HACCP" data-en="HACCP Temperatures">Temperatury HACCP</h3>
-      <p data-pl="Kontrola temperatur lodówek, zamrażarek i pieców 2x dziennie. Automatyczny alert gdy wartość wyjdzie poza normę. Pełna historia pomiarów dla Sanepidu."
-         data-en="Fridge, freezer and oven temperature checks 2x daily. Auto alert when value exceeds norm. Full measurement history for inspections.">
-        Kontrola temperatur lodówek, zamrażarek i pieców 2x dziennie. Automatyczny alert gdy wartość wyjdzie poza normę. Pełna historia pomiarów dla Sanepidu.
-      </p>
-      <span class="feat-tag" style="background:#fef3c7;color:#b45309">HACCP</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#fce7f3">💰</div>
-      <h3 data-pl="Food Cost" data-en="Food Cost">Food Cost</h3>
-      <p data-pl="Podłącz arkusz Excel z cenami surowców. System automatycznie policzy procent food costu i porówna ceny na fakturach. Widzisz dokładnie ile zarabiasz na każdym daniu."
-         data-en="Connect an Excel sheet with ingredient prices. System auto-calculates food cost percentage and compares invoice prices. See exactly how much you earn on each dish.">
-        Podłącz arkusz Excel z cenami surowców. System automatycznie policzy procent food costu i porówna ceny na fakturach. Widzisz dokładnie ile zarabiasz na każdym daniu.
-      </p>
-      <span class="feat-tag" style="background:#fce7f3;color:#be185d" data-pl="Finanse" data-en="Finance">Finanse</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#ede9fe">🧾</div>
-      <h3 data-pl="Faktury OCR" data-en="Invoice OCR">Faktury OCR</h3>
-      <p data-pl="Zrób zdjęcie faktury telefonem — sztuczna inteligencja odczyta pozycje, ceny i dostawcę. Automatyczne porównanie z cenami food cost. Koniec ręcznego wpisywania."
-         data-en="Take a photo of an invoice — AI reads items, prices and supplier. Auto comparison with food cost prices. No more manual entry.">
-        Zrób zdjęcie faktury telefonem — sztuczna inteligencja odczyta pozycje, ceny i dostawcę. Automatyczne porównanie z cenami food cost. Koniec ręcznego wpisywania.
-      </p>
-      <span class="feat-tag" style="background:#ede9fe;color:#7c3aed">AI</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#ecfdf5">🧹</div>
-      <h3 data-pl="Sprzątanie" data-en="Cleaning">Sprzątanie</h3>
-      <p data-pl="Zdefiniuj strefy i częstotliwość — codziennie, co tydzień, co miesiąc. Pracownicy odhaczają ze zdjęciem. Historia do wglądu przy kontroli Sanepidu."
-         data-en="Define zones and frequency — daily, weekly, monthly. Workers check off with photo. History available for inspections.">
-        Zdefiniuj strefy i częstotliwość — codziennie, co tydzień, co miesiąc. Pracownicy odhaczają ze zdjęciem. Historia do wglądu przy kontroli Sanepidu.
-      </p>
-      <span class="feat-tag" style="background:#ecfdf5;color:#059669">HACCP</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#fff7ed">📡</div>
-      <h3>WOKI TALKIE</h3>
-      <p data-pl="Wiadomości głosowe i tekstowe między właścicielem a zespołem. AI transkrybuje nagranie i automatycznie wyciąga zadania. Komunikacja bez WhatsAppa."
-         data-en="Voice and text messages between owner and team. AI transcribes recording and auto-extracts tasks. Communication without WhatsApp.">
-        Wiadomości głosowe i tekstowe między właścicielem a zespołem. AI transkrybuje nagranie i automatycznie wyciąga zadania. Komunikacja bez WhatsAppa.
-      </p>
-      <span class="feat-tag" style="background:#fff7ed;color:var(--brand-600)">AI</span>
-    </div>
-    <div class="feat-card reveal">
-      <div class="feat-icon" style="background:#fef2f2">⭐</div>
-      <h3 data-pl="System gwiazdek" data-en="Star System">System gwiazdek</h3>
-      <p data-pl="Nagradzaj najlepszych pracowników gwiazdkami. System pasów kolorów jak w karate — od żółtego do czarnego. Widoczne na ekranie logowania — motywacja od samego startu."
-         data-en="Reward top workers with stars. Belt color system like karate — from yellow to black. Visible on login screen — motivation from the start.">
-        Nagradzaj najlepszych pracowników gwiazdkami. System pasów kolorów jak w karate — od żółtego do czarnego. Widoczne na ekranie logowania — motywacja od samego startu.
-      </p>
-      <span class="feat-tag" style="background:#fef2f2;color:#dc2626" data-pl="Zespół" data-en="Team">Zespół</span>
+
+    <!-- Animated phone demo -->
+    <div class="wt-phone">
+      <div class="wt-phone-frame">
+        <div class="wt-phone-notch"></div>
+        <div class="wt-screen">
+          <div class="wt-screen-header">
+            <h3>📡 WOKI TALKIE</h3>
+            <p data-pl="Właściciel → Zespół" data-en="Owner → Team">Właściciel → Zespół</p>
+          </div>
+          <div class="wt-chat" id="wtChat"></div>
+          <button class="wt-replay" onclick="startWTDemo()" id="wtReplay" style="display:none"
+                  data-pl="↻ Odtwórz ponownie" data-en="↻ Replay">↻ Odtwórz ponownie</button>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- ━━━ ROLES ━━━ -->
-<section class="roles" id="roles">
+<section class="roles">
   <div class="reveal">
     <div class="section-label" data-pl="Role" data-en="Roles">Role</div>
     <h2 class="section-title" data-pl="Każdy widzi swoje" data-en="Everyone sees their own">Każdy widzi swoje</h2>
-    <p class="section-desc"
-       data-pl="Pięć ról, każda z własnym zestawem modułów. Właściciel może dostosować widok każdego pracownika indywidualnie."
-       data-en="Five roles, each with its own module set. Owner can customize each worker's view individually.">
-      Pięć ról, każda z własnym zestawem modułów. Właściciel może dostosować widok każdego pracownika indywidualnie.
-    </p>
+    <p class="section-desc" data-pl="Pięć ról, każda z własnym zestawem modułów. Właściciel może dostosować widok każdego pracownika indywidualnie." data-en="Five roles, each with its own module set. Owner can customize each worker's view individually.">Pięć ról, każda z własnym zestawem modułów. Właściciel może dostosować widok każdego pracownika indywidualnie.</p>
   </div>
   <div class="roles-row reveal">
-    <div class="role-pill">
-      <span class="role-emoji">🥷</span>
-      <div class="role-info">
-        <h4 data-pl="Właściciel" data-en="Owner">Właściciel</h4>
-        <p data-pl="Pełny dostęp" data-en="Full access">Pełny dostęp</p>
-      </div>
-    </div>
-    <div class="role-pill">
-      <span class="role-emoji">👔</span>
-      <div class="role-info">
-        <h4 data-pl="Menedżer" data-en="Manager">Menedżer</h4>
-        <p data-pl="Zespół + operacje" data-en="Team + operations">Zespół + operacje</p>
-      </div>
-    </div>
-    <div class="role-pill">
-      <span class="role-emoji">👨‍🍳</span>
-      <div class="role-info">
-        <h4 data-pl="Kuchnia" data-en="Kitchen">Kuchnia</h4>
-        <p data-pl="Checklist + HACCP" data-en="Checklist + HACCP">Checklist + HACCP</p>
-      </div>
-    </div>
-    <div class="role-pill">
-      <span class="role-emoji">🍽️</span>
-      <div class="role-info">
-        <h4 data-pl="Sala" data-en="Hall">Sala</h4>
-        <p data-pl="Checklist + zadania" data-en="Checklist + tasks">Checklist + zadania</p>
-      </div>
-    </div>
-    <div class="role-pill">
-      <span class="role-emoji">🍸</span>
-      <div class="role-info">
-        <h4>Bar</h4>
-        <p data-pl="Checklist barowy" data-en="Bar checklist">Checklist barowy</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ━━━ WOKI WOKI CASE STUDY ━━━ -->
-<section class="case-study" id="casestudy">
-  <div class="case-inner reveal">
-    <div class="case-left">
-      <div class="case-badge">
-        <span>🍜</span>
-        <span>Case Study</span>
-      </div>
-      <h2>
-        <span class="brand-text">WOKI WOKI</span><br>
-        <span data-pl="już używa KitchenOps" data-en="already uses KitchenOps">już używa KitchenOps</span>
-      </h2>
-      <p data-pl="WOKI WOKI — imbir i ryż — restauracja z kuchnią azjatycką w Bielsku-Białej. Pierwszy lokal, który wdrożył KitchenOps od dnia zero. System zarządza codzienną pracą zespołu, kontrolą HACCP i kosztami."
-         data-en="WOKI WOKI — ginger and rice — an Asian cuisine restaurant in Bielsko-Biała, Poland. The first venue to implement KitchenOps from day zero. The system manages daily team operations, HACCP control and costs.">
-        WOKI WOKI — imbir i ryż — restauracja z kuchnią azjatycką w Bielsku-Białej. Pierwszy lokal, który wdrożył KitchenOps od dnia zero. System zarządza codzienną pracą zespołu, kontrolą HACCP i kosztami.
-      </p>
-      <div class="case-stats">
-        <div>
-          <div class="case-stat-num">14</div>
-          <div class="case-stat-label" data-pl="modułów aktywnych" data-en="active modules">modułów aktywnych</div>
-        </div>
-        <div>
-          <div class="case-stat-num">2x</div>
-          <div class="case-stat-label" data-pl="kontrola temp. dziennie" data-en="temp checks daily">kontrola temp. dziennie</div>
-        </div>
-        <div>
-          <div class="case-stat-num">0</div>
-          <div class="case-stat-label" data-pl="kartek i Exceli" data-en="papers & spreadsheets">kartek i Exceli</div>
-        </div>
-      </div>
-    </div>
-    <div class="case-right">
-      <div class="case-quote">
-        <p data-pl="„Wcześniej wszystko było na kartkach albo w głowie. Teraz każdy wie co ma robić, a ja widzę postęp bez wchodzenia do kuchni.""
-           data-en=""Before, everything was on paper or in my head. Now everyone knows what to do, and I see progress without entering the kitchen."">
-          „Wcześniej wszystko było na kartkach albo w głowie. Teraz każdy wie co ma robić, a ja widzę postęp bez wchodzenia do kuchni."
-        </p>
-        <div class="cq-author">
-          <div class="cq-avatar">🥷</div>
-          <div>
-            <div class="cq-name" data-pl="Właściciel" data-en="Owner">Właściciel</div>
-            <div class="cq-role">WOKI WOKI · Bielsko-Biała</div>
-          </div>
-        </div>
-      </div>
-      <div class="case-modules">
-        <span class="case-mod">✅ Checklist</span>
-        <span class="case-mod">📋 <span data-pl="Zadania" data-en="Tasks">Zadania</span></span>
-        <span class="case-mod">🌡️ HACCP</span>
-        <span class="case-mod">💰 Food Cost</span>
-        <span class="case-mod">🧾 <span data-pl="Faktury" data-en="Invoices">Faktury</span></span>
-        <span class="case-mod">📡 WOKI TALKIE</span>
-        <span class="case-mod">⭐ <span data-pl="Gwiazdki" data-en="Stars">Gwiazdki</span></span>
-        <span class="case-mod">📅 <span data-pl="Grafik" data-en="Schedule">Grafik</span></span>
-      </div>
-    </div>
+    <div class="role-pill"><span class="role-emoji">🥷</span><div class="role-info"><h4 data-pl="Właściciel" data-en="Owner">Właściciel</h4><p data-pl="Pełny dostęp" data-en="Full access">Pełny dostęp</p></div></div>
+    <div class="role-pill"><span class="role-emoji">👔</span><div class="role-info"><h4 data-pl="Menedżer" data-en="Manager">Menedżer</h4><p data-pl="Zespół + operacje" data-en="Team + operations">Zespół + operacje</p></div></div>
+    <div class="role-pill"><span class="role-emoji">👨‍🍳</span><div class="role-info"><h4 data-pl="Kuchnia" data-en="Kitchen">Kuchnia</h4><p data-pl="Checklist + HACCP" data-en="Checklist + HACCP">Checklist + HACCP</p></div></div>
+    <div class="role-pill"><span class="role-emoji">🍽️</span><div class="role-info"><h4 data-pl="Sala" data-en="Hall">Sala</h4><p data-pl="Checklist + zadania" data-en="Checklist + tasks">Checklist + zadania</p></div></div>
+    <div class="role-pill"><span class="role-emoji">🍸</span><div class="role-info"><h4>Bar</h4><p data-pl="Checklist barowy" data-en="Bar checklist">Checklist barowy</p></div></div>
   </div>
 </section>
 
 <!-- ━━━ NUMBERS ━━━ -->
 <section class="numbers">
   <div class="numbers-row reveal">
-    <div>
-      <div class="num-big accent">18</div>
-      <div class="num-label" data-pl="modułów" data-en="modules">modułów</div>
-    </div>
-    <div>
-      <div class="num-big">5</div>
-      <div class="num-label" data-pl="ról" data-en="roles">ról</div>
-    </div>
-    <div>
-      <div class="num-big">PWA</div>
-      <div class="num-label" data-pl="działa jak aplikacja" data-en="works like an app">działa jak aplikacja</div>
-    </div>
-    <div>
-      <div class="num-big accent">AI</div>
-      <div class="num-label" data-pl="OCR faktur + transkrypcja" data-en="invoice OCR + transcription">OCR faktur + transkrypcja</div>
-    </div>
+    <div><div class="num-big accent">18</div><div class="num-label" data-pl="modułów" data-en="modules">modułów</div></div>
+    <div><div class="num-big">5</div><div class="num-label" data-pl="ról" data-en="roles">ról</div></div>
+    <div><div class="num-big">PWA</div><div class="num-label" data-pl="działa jak aplikacja" data-en="works like an app">działa jak aplikacja</div></div>
+    <div><div class="num-big accent">AI</div><div class="num-label" data-pl="OCR faktur + transkrypcja" data-en="invoice OCR + transcription">OCR faktur + transkrypcja</div></div>
+  </div>
+</section>
+
+<!-- ━━━ VIDEO ━━━ -->
+<section class="video-section">
+  <div class="reveal">
+    <div class="section-label" data-pl="Zobacz w akcji" data-en="See it in action">Zobacz w akcji</div>
+    <h2 class="section-title" data-pl="Jak działa KitchenOps" data-en="How KitchenOps works">Jak działa KitchenOps</h2>
+    <p class="section-desc" data-pl="Obejrzyj krótkie demo całej aplikacji w działaniu." data-en="Watch a short demo of the entire app in action.">Obejrzyj krótkie demo całej aplikacji w działaniu.</p>
+  </div>
+  <div class="video-card reveal" id="videoPlaceholder">
+    <div class="video-play"><div class="video-play-icon"></div></div>
+    <div class="video-label" data-pl="Film demo · Wkrótce" data-en="Demo video · Coming soon">Film demo · Wkrótce</div>
   </div>
 </section>
 
@@ -901,22 +815,14 @@ body {
 <section class="cta-section">
   <div class="reveal">
     <h2 data-pl="Gotowy na zmianę?" data-en="Ready for a change?">Gotowy na zmianę?</h2>
-    <p data-pl="Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek."
-       data-en="Log in and see for yourself. Your restaurant deserves order.">
-      Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek.
-    </p>
+    <p data-pl="Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek." data-en="Log in and see for yourself. Your restaurant deserves order.">Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek.</p>
     <a href="/login" class="btn-primary" data-pl="Zaloguj się →" data-en="Log in →">Zaloguj się →</a>
   </div>
 </section>
 
 <!-- ━━━ FOOTER ━━━ -->
 <footer class="footer">
-  <p>
-    © 2026 KitchenOps ·
-    <span data-pl="Zbudowany" data-en="Built">Zbudowany</span>
-    <span data-pl="w Bielsku-Białej" data-en="in Bielsko-Biała">w Bielsku-Białej</span> ·
-    <a href="/login" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a>
-  </p>
+  <p>© 2026 KitchenOps · <span data-pl="Zbudowany w Bielsku-Białej" data-en="Built in Bielsko-Biała">Zbudowany w Bielsku-Białej</span> · <a href="/login" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a></p>
 </footer>
 
 <script>
@@ -938,9 +844,117 @@ window.addEventListener('scroll', () => {
 
 // ─── REVEAL ON SCROLL ───
 const obs = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('vis'); obs.unobserve(e.target); }});
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('vis');
+      // Start WOKI TALKIE demo when section becomes visible
+      if (e.target.closest && e.target.closest('#wokitalkie')) startWTDemo();
+      obs.unobserve(e.target);
+    }
+  });
 }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
 document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+// ─── WOKI TALKIE ANIMATED DEMO ───
+let wtRunning = false;
+function startWTDemo() {
+  if (wtRunning) return;
+  wtRunning = true;
+  const chat = document.getElementById('wtChat');
+  const replay = document.getElementById('wtReplay');
+  chat.innerHTML = '';
+  replay.style.display = 'none';
+
+  const isPl = lang === 'pl';
+
+  const sequence = [
+    // 1. Owner sends voice message
+    { delay: 600, type: 'voice', duration: '0:08' },
+    // 2. System: transcribing
+    { delay: 1200, type: 'system', text: isPl ? '🤖 Transkrybuję...' : '🤖 Transcribing...' },
+    // 3. Processing dots
+    { delay: 800, type: 'processing' },
+    // 4. AI transcription result
+    { delay: 2000, type: 'ai', text: isPl
+      ? '📝 Transkrypcja:\n„Hej, na jutro trzeba zamówić ryż jaśminowy i olej sezamowy z MAKRO. I niech Yurii sprawdzi temperaturę w zamrażarce bo wczoraj była za wysoka."'
+      : '📝 Transcription:\n"Hey, for tomorrow we need to order jasmine rice and sesame oil from MAKRO. And have Yurii check the freezer temp — it was too high yesterday."'
+    },
+    // 5. System: extracting tasks
+    { delay: 1500, type: 'system', text: isPl ? '✅ Wyciągam zadania...' : '✅ Extracting tasks...' },
+    // 6. Processing
+    { delay: 600, type: 'processing' },
+    // 7. Task cards
+    { delay: 1800, type: 'tasks', items: isPl
+      ? [
+          { text: 'Zamówić ryż jaśminowy + olej sezamowy (MAKRO)', who: '→ Menedżer', done: false },
+          { text: 'Sprawdzić temperaturę zamrażarki', who: '→ Yurii', done: false },
+        ]
+      : [
+          { text: 'Order jasmine rice + sesame oil (MAKRO)', who: '→ Manager', done: false },
+          { text: 'Check freezer temperature', who: '→ Yurii', done: false },
+        ]
+    },
+    // 8. Confirmation
+    { delay: 1200, type: 'system', text: isPl ? '✅ 2 zadania utworzone i przypisane' : '✅ 2 tasks created and assigned' },
+  ];
+
+  let i = 0;
+  function next() {
+    if (i >= sequence.length) {
+      wtRunning = false;
+      replay.style.display = 'block';
+      return;
+    }
+    const step = sequence[i];
+    i++;
+    setTimeout(() => {
+      // Remove processing indicator before adding new message
+      const proc = chat.querySelector('.wt-processing');
+      if (proc && step.type !== 'processing') proc.remove();
+
+      if (step.type === 'voice') {
+        const el = document.createElement('div');
+        el.className = 'wt-voice';
+        el.innerHTML = `
+          <span style="font-size:16px">🎙️</span>
+          <div class="wt-voice-wave">
+            ${Array.from({length:10}, () => '<span></span>').join('')}
+          </div>
+          <span class="wt-voice-dur">${step.duration}</span>
+        `;
+        chat.appendChild(el);
+      } else if (step.type === 'system') {
+        const el = document.createElement('div');
+        el.className = 'wt-msg system';
+        el.textContent = step.text;
+        chat.appendChild(el);
+      } else if (step.type === 'processing') {
+        const el = document.createElement('div');
+        el.className = 'wt-processing';
+        el.innerHTML = '<div class="wt-dots"><span></span><span></span><span></span></div>';
+        chat.appendChild(el);
+      } else if (step.type === 'ai') {
+        const el = document.createElement('div');
+        el.className = 'wt-msg ai';
+        el.style.whiteSpace = 'pre-line';
+        el.textContent = step.text;
+        chat.appendChild(el);
+      } else if (step.type === 'tasks') {
+        const el = document.createElement('div');
+        el.className = 'wt-task-card';
+        let html = `<div class="tc-label">${isPl ? 'Zadania utworzone' : 'Tasks created'}</div>`;
+        step.items.forEach(item => {
+          html += `<div class="tc-item"><div class="tc-check">✓</div><div><span style="display:block">${item.text}</span><span style="font-size:10px;color:rgba(255,255,255,0.4)">${item.who}</span></div></div>`;
+        });
+        el.innerHTML = html;
+        chat.appendChild(el);
+      }
+      chat.scrollTop = chat.scrollHeight;
+      next();
+    }, step.delay);
+  }
+  next();
+}
 </script>
 </body>
 </html>
