@@ -11,7 +11,7 @@ export default function BottomNav() {
 
   if (!user) return null
   // Nie pokazuj na loginie i setupie
-  if (pathname === '/login' || pathname === '/setup' || pathname === '/onboarding') return null
+  if (pathname === '/login' || pathname === '/setup' || pathname === '/onboarding' || pathname === '/join') return null
 
   const role: RoleType = normalizeRole(user.role)
   const nav = ROLES[role].bottomNav

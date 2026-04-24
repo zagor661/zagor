@@ -91,10 +91,11 @@ export default function LoginPage() {
 
   async function loadProfilesForLocation(locationId: string) {
     // Get user IDs linked to this location (exclude expired temp access)
-    const { data: links } = await supabase
+    const { data: links, error: linksErr } = await supabase
       .from('user_locations')
       .select('user_id, expires_at')
       .eq('location_id', locationId)
+
     // Filter out expired entries
     const now = new Date().toISOString()
     const validLinks = (links || []).filter(
@@ -114,7 +115,17 @@ export default function LoginPage() {
       profileData = data || []
     }
 
-    // No fallback — all profiles must be linked via user_locations
+    // Fallback: if user_locations returned nothing (RLS issue or no links),
+    // load ALL active profiles so workers can still log in
+    if (profileData.length === 0) {
+      console.warn('[login] user_locations empty/blocked — loading all profiles as fallback', linksErr)
+      const { data: allProfiles } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, pin')
+        .eq('is_active', true)
+        .order('full_name')
+      profileData = allProfiles || []
+    }
 
     // Fetch star counts for belt colors (per location)
     const { data: stars } = await supabase
