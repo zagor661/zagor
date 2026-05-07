@@ -6,20 +6,20 @@ import { isAdminRole, normalizeRole } from '@/lib/roles'
 import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
 import { DEFAULT_RECIPES, type Recipe, type RecipeLine } from '@/lib/foodcostRecipes'
 
-// ─── GoPOS ↔ Food Cost mapping ─────────────────────────────
-// GoPOS name → foodcostProducts dish name
+// ─── GoPOS ↔ Recipe name mapping ───────────────────────────
+// GoPOS product name → recipe name (from foodcostRecipes.ts)
 const GOPOS_TO_FC: Record<string, string> = {
-  '01 TOKYO': 'TOKIO',
-  '02 JOKOHAMA': 'YOKOHAMA',
-  '03 OSAKA': 'OSAKA',
-  '04 KOBE': 'KOBE',
-  '05 SAPPORO': 'SAPPORO',
-  '06 NAGOJA': 'NAGOJA',
-  '07 WEGETARIAN SAN': 'WEGETARIAN SAN',
-  '08 SAN VEGAN': 'SAN WEGAN',
-  '09 SAMON SAN': 'SAMON SAN',
-  '10 SENDAI': 'SENDAI',
-  '11 NARA': 'NARA',
+  '01 TOKYO': '01 TOKIO',
+  '02 JOKOHAMA': '02 YOKOHAMA',
+  '03 OSAKA': '03 OSAKA',
+  '04 KOBE': '04 KOBE',
+  '05 SAPPORO': '05 SAPPORO',
+  '06 NAGOJA': '06 NAGOJA',
+  '07 WEGETARIAN SAN': '07 WEGETARIAN SAN',
+  '08 SAN VEGAN': '08 SAN WEGAN',
+  '09 SAMON SAN': '09 SAMON SAN',
+  '10 SENDAI': '10 SENDAI',
+  '11 NARA': '11 NARA',
   '12 Kompozycja Własna': 'KOMPOZYCJA',
   '13 Kompozycja Własna Krewetka': 'KOMPOZYCJA KREWETKA',
 }
@@ -51,14 +51,23 @@ const CATEGORY_ORDER = ['Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie', '
 
 // LocalStorage key for recipes
 const RECIPES_KEY = 'kitchenops_recipes'
+const RECIPES_VERSION_KEY = 'kitchenops_recipes_v'
+const RECIPES_VERSION = 2 // bump when DEFAULT_RECIPES change
 
 function loadRecipes(): Recipe[] {
   if (typeof window === 'undefined') return DEFAULT_RECIPES
   try {
+    const storedVersion = parseInt(localStorage.getItem(RECIPES_VERSION_KEY) || '0')
+    if (storedVersion < RECIPES_VERSION) {
+      // New version — replace with updated defaults
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(DEFAULT_RECIPES))
+      localStorage.setItem(RECIPES_VERSION_KEY, String(RECIPES_VERSION))
+      return [...DEFAULT_RECIPES]
+    }
     const raw = localStorage.getItem(RECIPES_KEY)
     if (!raw) {
-      // First load — seed with defaults from Excel
       localStorage.setItem(RECIPES_KEY, JSON.stringify(DEFAULT_RECIPES))
+      localStorage.setItem(RECIPES_VERSION_KEY, String(RECIPES_VERSION))
       return [...DEFAULT_RECIPES]
     }
     const stored = JSON.parse(raw) as Recipe[]
