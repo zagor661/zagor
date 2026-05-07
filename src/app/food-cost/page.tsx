@@ -4,22 +4,7 @@ import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole, normalizeRole } from '@/lib/roles'
 import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
-
-// ─── Types ──────────────────────────────────────────────────
-interface RecipeLine {
-  productName: string
-  pricePerKg: number
-  quantity: number // in kg
-}
-
-interface Recipe {
-  id: string
-  name: string
-  category: string
-  sellingPrice: number
-  portions: number
-  lines: RecipeLine[]
-}
+import { DEFAULT_RECIPES, type Recipe, type RecipeLine } from '@/lib/foodcostRecipes'
 
 // ─── GoPOS ↔ Food Cost mapping ─────────────────────────────
 // GoPOS name → foodcostProducts dish name
@@ -68,11 +53,17 @@ const CATEGORY_ORDER = ['Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie', '
 const RECIPES_KEY = 'kitchenops_recipes'
 
 function loadRecipes(): Recipe[] {
-  if (typeof window === 'undefined') return []
+  if (typeof window === 'undefined') return DEFAULT_RECIPES
   try {
     const raw = localStorage.getItem(RECIPES_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch { return [] }
+    if (!raw) {
+      // First load — seed with defaults from Excel
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(DEFAULT_RECIPES))
+      return [...DEFAULT_RECIPES]
+    }
+    const stored = JSON.parse(raw) as Recipe[]
+    return stored.length > 0 ? stored : DEFAULT_RECIPES
+  } catch { return DEFAULT_RECIPES }
 }
 
 function saveRecipes(recipes: Recipe[]) {
