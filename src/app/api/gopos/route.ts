@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  getMe, getOrganization, getItems, getCategories, getOrders, getOrderDetail, getOrderItems,
-  getOrderItemsReport, getOrderItemsReportByItem, getOrdersReport, getOrderPaymentsReport,
+  getMe, getOrganization, getItems, getCategories,
+  getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
 } from '@/lib/gopos'
@@ -52,44 +52,46 @@ export async function GET(req: NextRequest) {
       }
 
       case 'sales_by_item': {
-        // Fetch orders list, then batch-fetch details to get order_items
+        // Use GoPOS reports API with NONE,PRODUCT grouping
         requireOrg()
         const siStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const siEnd = req.nextUrl.searchParams.get('date_end') || getToday()
-        const rawOrders = await getOrders(orgId, siStart, siEnd)
-        const orderList: any[] = rawOrders?.data || []
+        const report = await getOrderItemsReportByProduct(orgId, siStart, siEnd)
 
-        // Batch fetch order items (5 at a time to avoid rate limits)
-        const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
-        const batchSize = 5
+        // Parse nested report structure: reports[0].sub_report[] = PRODUCT entries
+        const reports: any[] = report?.reports || []
+        const noneLevel = reports[0] // group_by_type: NONE (summary)
+        const productEntries: any[] = noneLevel?.sub_report || []
 
-        for (let i = 0; i < orderList.length; i += batchSize) {
-          const batch = orderList.slice(i, i + batchSize)
-          const results = await Promise.all(
-            batch.map((o: any) => getOrderItems(orgId, o.id).catch(() => null))
-          )
-
-          for (const result of results) {
-            const orderItems = result?.data || []
-            for (const item of orderItems) {
-              const name = item.item?.name || item.item_name || item.name || 'Nieznany'
-              const qty = item.quantity || 1
-              const price = item.total_price?.amount || item.price?.amount || 0
-
-              if (!itemMap[name]) {
-                itemMap[name] = { name, quantity: 0, revenue: 0 }
-              }
-              itemMap[name].quantity += qty
-              itemMap[name].revenue += price
-            }
+        const items = productEntries.map((entry: any) => {
+          const name = entry.group_by_value?.name || 'Nieznany'
+          const sales = entry.aggregate?.sales || {}
+          return {
+            name,
+            quantity: sales.product_quantity || 0,
+            revenue: sales.total_money?.amount || 0,
+            net_revenue: sales.net_total_money?.amount || 0,
+            transactions: sales.transaction_count || 0,
+            discount: sales.discount_money?.amount || 0,
           }
-        }
+        }).sort((a: any, b: any) => b.revenue - a.revenue)
 
-        const items = Object.values(itemMap).sort((a, b) => b.revenue - a.revenue)
+        // Summary from NONE level
+        const totalSales = noneLevel?.aggregate?.sales || {}
+
         return NextResponse.json({
           ok: true,
           period: { start: siStart, end: siEnd },
-          data: { items, total_orders: orderList.length },
+          data: {
+            items,
+            summary: {
+              total_revenue: totalSales.total_money?.amount || 0,
+              net_revenue: totalSales.net_total_money?.amount || 0,
+              total_quantity: totalSales.product_quantity || 0,
+              total_transactions: totalSales.transaction_count || 0,
+              total_discount: totalSales.discount_money?.amount || 0,
+            },
+          },
         })
       }
 
@@ -155,19 +157,6 @@ export async function GET(req: NextRequest) {
         requireOrg()
         const menus = await getMenus(orgId)
         return NextResponse.json({ ok: true, data: menus })
-      }
-
-      case 'order_debug': {
-        requireOrg()
-        const rawOrders2 = await getOrders(orgId, getToday(), getToday())
-        const list2 = rawOrders2?.data || []
-        if (list2.length === 0) return NextResponse.json({ ok: true, msg: 'no orders today' })
-        const oi = await getOrderItems(orgId, list2[0].id)
-        return NextResponse.json({
-          ok: true,
-          order_id: list2[0].id,
-          order_items_response: oi,
-        })
       }
 
       default:

@@ -128,11 +128,10 @@ export default function FoodCostPage() {
         return
       }
 
-      // Parse server-aggregated items
+      // Parse report items (from NONE,PRODUCT grouping)
       const rawItems = json.data?.items || []
+      const summary = json.data?.summary || {}
       const items: SalesItemData[] = []
-      let totalRev = 0
-      let totalQty = 0
 
       for (const ri of rawItems) {
         const goposName = ri.name || 'Nieznany'
@@ -143,15 +142,13 @@ export default function FoodCostPage() {
 
         if (qty > 0) {
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
-          totalRev += revenue
-          totalQty += qty
         }
       }
 
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
-      setSalesTotalRevenue(totalRev)
-      setSalesTotalQty(totalQty)
+      setSalesTotalRevenue(summary.total_revenue || items.reduce((s, i) => s + i.revenue, 0))
+      setSalesTotalQty(summary.total_quantity || items.reduce((s, i) => s + i.quantity, 0))
     } catch {
       setSalesItems([])
     }
