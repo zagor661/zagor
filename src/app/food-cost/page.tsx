@@ -32,6 +32,13 @@ interface SalesItemData {
   sellingPrice: number
 }
 
+// Kompozycja Własna component (free base/noodle/sauce or paid add-on)
+interface CompositionComponent {
+  name: string
+  quantity: number
+  revenue: number   // 0 = free component, >0 = paid add-on
+}
+
 type SalesPeriod = 'today' | 'week' | 'month'
 
 type TabType = 'sales' | 'recipes' | 'ingredients' | 'add-recipe'
@@ -94,6 +101,8 @@ export default function FoodCostPage() {
   const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
   const [salesTotalQty, setSalesTotalQty] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const [compositionComponents, setCompositionComponents] = useState<CompositionComponent[]>([])
+  const [expandedSalesItem, setExpandedSalesItem] = useState<string | null>(null)
 
   // Search
   const [searchIng, setSearchIng] = useState('')
@@ -128,6 +137,10 @@ export default function FoodCostPage() {
       // Parse report items (from NONE,PRODUCT grouping)
       const rawItems = json.data?.items || []
       const items: SalesItemData[] = []
+      const components: CompositionComponent[] = []
+
+      // Known dish names (from GOPOS_TO_FC keys) — everything else with revenue=0 is a composition component
+      const knownDishes = new Set(Object.keys(GOPOS_TO_FC))
 
       for (const ri of rawItems) {
         const goposName = ri.name || 'Nieznany'
@@ -136,14 +149,30 @@ export default function FoodCostPage() {
         const sellingPrice = qty > 0 ? revenue / qty : 0
         const fcName = GOPOS_TO_FC[goposName] || null
 
-        // Only show items with actual revenue (skip components/bases with 0 zł)
-        if (revenue > 0) {
+        if (revenue > 0 && (knownDishes.has(goposName) || fcName)) {
+          // Known dish with revenue → main sales list
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
+        } else if (revenue > 0 && !knownDishes.has(goposName)) {
+          // Paid item NOT in dish list → paid add-on (Rostbef, Udko, etc.)
+          // Show in main list AND as composition component
+          items.push({ goposName, fcName: null, quantity: qty, revenue, sellingPrice })
+          components.push({ name: goposName, quantity: qty, revenue })
+        } else if (revenue === 0 && qty > 0) {
+          // Free component (base, noodle, sauce, topping)
+          components.push({ name: goposName, quantity: qty, revenue: 0 })
         }
       }
 
+      // Sort components: paid add-ons first, then by quantity
+      components.sort((a, b) => {
+        if (a.revenue > 0 && b.revenue === 0) return -1
+        if (a.revenue === 0 && b.revenue > 0) return 1
+        return b.quantity - a.quantity
+      })
+
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
+      setCompositionComponents(components)
       const paidRevenue = items.reduce((s, i) => s + i.revenue, 0)
       const paidQty = items.reduce((s, i) => s + i.quantity, 0)
       setSalesTotalRevenue(paidRevenue)
@@ -378,50 +407,121 @@ export default function FoodCostPage() {
                   {salesItems.map((item, i) => {
                     const fc = getRecipeFc(item.fcName, item.sellingPrice)
                     const hasRecipe = item.fcName && recipes.some(r => r.name.toUpperCase() === item.fcName?.toUpperCase())
+                    const isKompozycja = item.goposName.includes('Kompozycja Własna')
+                    const isExpanded = expandedSalesItem === item.goposName
 
                     return (
-                      <div key={i} className="bg-white rounded-xl border border-gray-100 p-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                            i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                            i === 1 ? 'bg-gray-100 text-gray-600' :
-                            i === 2 ? 'bg-orange-100 text-orange-700' :
-                            'bg-gray-50 text-gray-400'
-                          }`}>
-                            {i + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-gray-900 text-sm truncate">{item.goposName}</div>
-                            <div className="text-[10px] text-gray-400">
-                              {Math.round(item.quantity)}x · {item.sellingPrice.toFixed(0)} zl/szt
-                              {item.fcName && !hasRecipe && (
-                                <span className="ml-1 text-amber-500">· brak receptury</span>
+                      <div key={i}>
+                        <div
+                          className={`bg-white rounded-xl border p-3 transition-all ${
+                            isKompozycja ? 'border-purple-200 cursor-pointer active:bg-purple-50' : 'border-gray-100'
+                          } ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}
+                          onClick={() => {
+                            if (isKompozycja) setExpandedSalesItem(isExpanded ? null : item.goposName)
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                              i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                              i === 1 ? 'bg-gray-100 text-gray-600' :
+                              i === 2 ? 'bg-orange-100 text-orange-700' :
+                              'bg-gray-50 text-gray-400'
+                            }`}>
+                              {i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-gray-900 text-sm truncate">
+                                {item.goposName}
+                                {isKompozycja && (
+                                  <span className="ml-1 text-[10px] text-purple-400">
+                                    {isExpanded ? '▲' : '▼'} szczegóły
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-gray-400">
+                                {Math.round(item.quantity)}x · {item.sellingPrice.toFixed(0)} zl/szt
+                                {item.fcName && !hasRecipe && (
+                                  <span className="ml-1 text-amber-500">· brak receptury</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-bold text-gray-900 text-sm">
+                                {new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(item.revenue)}
+                              </div>
+                              {fc !== null ? (
+                                <div className={`text-[10px] font-bold ${
+                                  fc <= 30 ? 'text-green-600' : fc <= 35 ? 'text-amber-600' : 'text-red-600'
+                                }`}>
+                                  FC: {fc.toFixed(1)}%
+                                </div>
+                              ) : (
+                                <div className="text-[10px] text-gray-300">FC: —</div>
                               )}
                             </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-bold text-gray-900 text-sm">
-                              {new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(item.revenue)}
-                            </div>
-                            {fc !== null ? (
-                              <div className={`text-[10px] font-bold ${
-                                fc <= 30 ? 'text-green-600' : fc <= 35 ? 'text-amber-600' : 'text-red-600'
-                              }`}>
-                                FC: {fc.toFixed(1)}%
-                              </div>
-                            ) : (
-                              <div className="text-[10px] text-gray-300">FC: —</div>
-                            )}
+
+                          {/* Revenue bar */}
+                          <div className="mt-2 w-full bg-gray-100 rounded-full h-1">
+                            <div
+                              className="h-1 rounded-full bg-emerald-400"
+                              style={{ width: `${Math.min((item.revenue / salesTotalRevenue) * 100, 100)}%` }}
+                            />
                           </div>
                         </div>
 
-                        {/* Revenue bar */}
-                        <div className="mt-2 w-full bg-gray-100 rounded-full h-1">
-                          <div
-                            className="h-1 rounded-full bg-emerald-400"
-                            style={{ width: `${Math.min((item.revenue / salesTotalRevenue) * 100, 100)}%` }}
-                          />
-                        </div>
+                        {/* ── Kompozycja Własna drill-down ── */}
+                        {isKompozycja && isExpanded && compositionComponents.length > 0 && (
+                          <div className="bg-purple-50 border border-purple-200 border-t-0 rounded-b-xl p-3 space-y-1.5">
+                            <div className="text-[10px] text-purple-500 font-bold uppercase tracking-wider mb-2">
+                              🍜 Co komponowali klienci ({compositionComponents.length})
+                            </div>
+
+                            {/* Paid add-ons section */}
+                            {compositionComponents.some(c => c.revenue > 0) && (
+                              <>
+                                <div className="text-[10px] text-purple-400 font-semibold mt-1 mb-1">Płatne dodatki</div>
+                                {compositionComponents.filter(c => c.revenue > 0).map((comp, ci) => (
+                                  <div key={`paid-${ci}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-purple-300">💰</span>
+                                      <span className="text-xs text-gray-700 font-medium">{comp.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-[10px] text-gray-400">{comp.quantity}x</span>
+                                      <span className="text-xs font-bold text-purple-600">
+                                        {comp.revenue.toFixed(0)} zł
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Free components section */}
+                            {compositionComponents.some(c => c.revenue === 0) && (
+                              <>
+                                <div className="text-[10px] text-purple-400 font-semibold mt-2 mb-1">Bazy / Makarony / Sosy / Toppings</div>
+                                {compositionComponents.filter(c => c.revenue === 0).map((comp, ci) => (
+                                  <div key={`free-${ci}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-gray-300">🥬</span>
+                                      <span className="text-xs text-gray-700">{comp.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
+                                      <span className="text-[10px] text-gray-300">gratis</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            <div className="text-[10px] text-purple-300 text-center mt-2 pt-2 border-t border-purple-100">
+                              Dane z GoPOS · okres: {salesPeriod === 'today' ? 'dzisiaj' : salesPeriod === 'week' ? '7 dni' : 'miesiąc'}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
