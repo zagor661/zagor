@@ -102,7 +102,7 @@ export async function getOrderItems(orgId: string, orderId: number) {
 export async function getOrderItemsReport(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/order_items', {
     organization_id: orgId,
-    date_range: `${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
     groups: 'NONE',
   })
 }
@@ -110,7 +110,7 @@ export async function getOrderItemsReport(orgId: string, dateStart: string, date
 export async function getOrderItemsReportByProduct(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/order_items', {
     organization_id: orgId,
-    date_range: `${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
     groups: 'NONE,PRODUCT',
   })
 }
@@ -118,7 +118,7 @@ export async function getOrderItemsReportByProduct(orgId: string, dateStart: str
 export async function getOrdersReport(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/orders', {
     organization_id: orgId,
-    date_range: `${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
   })
 }
 
@@ -145,7 +145,7 @@ export async function getPaymentMethods(orgId: string) {
 export async function getOrderPaymentsReport(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/order_payments', {
     organization_id: orgId,
-    date_range: `${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
   })
 }
 
