@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   getMe, getOrganization, getItems, getCategories,
-  getOrderItemsReport, getOrdersReport, getOrderPaymentsReport,
+  getOrderItemsReport, getOrderItemsReportByItem, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
 } from '@/lib/gopos'
@@ -49,6 +49,14 @@ export async function GET(req: NextRequest) {
         const dateEnd = req.nextUrl.searchParams.get('date_end') || getToday()
         const report = await getOrderItemsReport(orgId, dateStart, dateEnd)
         return NextResponse.json({ ok: true, period: { start: dateStart, end: dateEnd }, data: report })
+      }
+
+      case 'sales_by_item': {
+        requireOrg()
+        const siStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
+        const siEnd = req.nextUrl.searchParams.get('date_end') || getToday()
+        const itemReport = await getOrderItemsReportByItem(orgId, siStart, siEnd)
+        return NextResponse.json({ ok: true, period: { start: siStart, end: siEnd }, data: itemReport })
       }
 
       case 'orders': {
@@ -119,7 +127,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           ok: false,
           error: `Unknown action: ${action}`,
-          available: ['me', 'org', 'items', 'categories', 'sales', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
+          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
         }, { status: 400 })
     }
   } catch (e: any) {

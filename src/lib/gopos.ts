@@ -100,6 +100,15 @@ export async function getOrderItemsReport(orgId: string, dateStart: string, date
   })
 }
 
+export async function getOrderItemsReportByItem(orgId: string, dateStart: string, dateEnd: string) {
+  return goposGet('/api/v3/reports/order_items', {
+    organization_id: orgId,
+    time_start: dateStart,
+    time_end: dateEnd,
+    groups: 'ITEM',
+  })
+}
+
 export async function getOrdersReport(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/orders', {
     organization_id: orgId,
