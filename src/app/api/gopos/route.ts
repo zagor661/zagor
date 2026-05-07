@@ -421,7 +421,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           ok: false,
           error: `Unknown action: ${action}`,
-          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'kompozycja_orders', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
+          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'kompozycja_debug', 'kompozycja_orders', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
         }, { status: 400 })
     }
   } catch (e: any) {
