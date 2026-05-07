@@ -4,6 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
+  goposGet,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -157,6 +158,60 @@ export async function GET(req: NextRequest) {
         requireOrg()
         const menus = await getMenus(orgId)
         return NextResponse.json({ ok: true, data: menus })
+      }
+
+      case 'date_test': {
+        // Temporary: test which date parameter format GoPOS accepts
+        requireOrg()
+        const today = getToday()
+        const tests: Record<string, any> = {}
+
+        // Test 1: closed_at with <bt>
+        try {
+          const r1 = await goposGet('/api/v3/reports/order_items', {
+            organization_id: orgId, groups: 'NONE',
+            closed_at: `<bt>${today}T00:00:00,${today}T23:59:59`,
+          })
+          tests['closed_at_bt'] = { ok: true, qty: r1?.reports?.[0]?.aggregate?.sales?.product_quantity }
+        } catch (e: any) { tests['closed_at_bt'] = { ok: false, error: e.message } }
+
+        // Test 2: date_range
+        try {
+          const r2 = await goposGet('/api/v3/reports/order_items', {
+            organization_id: orgId, groups: 'NONE',
+            date_range: `${today}T00:00:00,${today}T23:59:59`,
+          })
+          tests['date_range'] = { ok: true, qty: r2?.reports?.[0]?.aggregate?.sales?.product_quantity }
+        } catch (e: any) { tests['date_range'] = { ok: false, error: e.message } }
+
+        // Test 3: created_at with <bt>
+        try {
+          const r3 = await goposGet('/api/v3/reports/order_items', {
+            organization_id: orgId, groups: 'NONE',
+            created_at: `<bt>${today}T00:00:00,${today}T23:59:59`,
+          })
+          tests['created_at_bt'] = { ok: true, qty: r3?.reports?.[0]?.aggregate?.sales?.product_quantity }
+        } catch (e: any) { tests['created_at_bt'] = { ok: false, error: e.message } }
+
+        // Test 4: time_start + time_end with dates (original)
+        try {
+          const r4 = await goposGet('/api/v3/reports/order_items', {
+            organization_id: orgId, groups: 'NONE',
+            time_start: today, time_end: today,
+          })
+          tests['time_start_end'] = { ok: true, qty: r4?.reports?.[0]?.aggregate?.sales?.product_quantity }
+        } catch (e: any) { tests['time_start_end'] = { ok: false, error: e.message } }
+
+        // Test 5: date_range with just dates (no time)
+        try {
+          const r5 = await goposGet('/api/v3/reports/order_items', {
+            organization_id: orgId, groups: 'NONE',
+            date_range: `${today},${today}`,
+          })
+          tests['date_range_simple'] = { ok: true, qty: r5?.reports?.[0]?.aggregate?.sales?.product_quantity }
+        } catch (e: any) { tests['date_range_simple'] = { ok: false, error: e.message } }
+
+        return NextResponse.json({ ok: true, today, tests })
       }
 
       default:
