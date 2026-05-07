@@ -160,6 +160,20 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: true, data: menus })
       }
 
+      case 'order_debug': {
+        requireOrg()
+        const rawOrders2 = await getOrders(orgId, getToday(), getToday())
+        const list2 = rawOrders2?.data || []
+        if (list2.length === 0) return NextResponse.json({ ok: true, msg: 'no orders today' })
+        const detail = await getOrderDetail(orgId, list2[0].id)
+        return NextResponse.json({
+          ok: true,
+          order_id: list2[0].id,
+          detail_keys: detail?.data ? Object.keys(detail.data) : 'no data',
+          detail_sample: JSON.stringify(detail?.data || detail).substring(0, 3000),
+        })
+      }
+
       default:
         return NextResponse.json({
           ok: false,
