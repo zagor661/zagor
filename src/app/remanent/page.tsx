@@ -236,7 +236,9 @@ export default function RemanentPage() {
     return sum
   }, [entries])
 
-  const handleSave = () => {
+  const [sending, setSending] = useState(false)
+
+  const handleSave = async () => {
     if (!employeeName.trim()) {
       alert('Wpisz imię osoby robiącej remanent')
       return
@@ -256,17 +258,51 @@ export default function RemanentPage() {
     }
 
     const now = new Date()
+    const dateStr = now.toISOString().split('T')[0]
     const record: SavedRemanent = {
-      date: now.toISOString().split('T')[0],
+      date: dateStr,
       timestamp: now.getTime(),
       employee: employeeName.trim(),
       entries: filledEntries,
     }
 
+    // 1. Save locally
     const updated = [record, ...history]
     setHistory(updated)
     saveHistory(updated)
     setSaved(true)
+
+    // 2. Build category map for email grouping
+    const categoryMap: Record<string, string> = {}
+    for (const e of entries) {
+      categoryMap[e.name] = e.category
+    }
+    for (const cp of customProducts) {
+      categoryMap[cp.name] = cp.category
+    }
+
+    // 3. Send email + Google Sheets
+    setSending(true)
+    try {
+      await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'remanent',
+          data: {
+            date: dateStr,
+            employee: employeeName.trim(),
+            entries: filledEntries,
+            categories: categoryMap,
+            totalValue,
+          },
+        }),
+      })
+    } catch (e) {
+      console.error('Send report error:', e)
+    } finally {
+      setSending(false)
+    }
   }
 
   const handleClear = () => {
@@ -539,13 +575,16 @@ export default function RemanentPage() {
             </button>
             <button
               onClick={handleSave}
+              disabled={sending}
               className={`flex-1 py-3 rounded-xl text-sm font-bold shadow-sm transition ${
                 saved
                   ? 'bg-emerald-500 text-white'
-                  : 'bg-indigo-600 text-white active:bg-indigo-700'
+                  : sending
+                    ? 'bg-indigo-400 text-white opacity-70'
+                    : 'bg-indigo-600 text-white active:bg-indigo-700'
               }`}
             >
-              {saved ? '✓ Zapisano!' : `Zapisz remanent (${filledCount} poz.)`}
+              {sending ? '📤 Wysyłam...' : saved ? '✓ Zapisano i wysłano!' : `Zapisz remanent (${filledCount} poz.)`}
             </button>
           </div>
         </>

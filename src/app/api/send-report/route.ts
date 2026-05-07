@@ -11,7 +11,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true })
     }
 
-    const to = process.env.REPORT_EMAIL || userEmail
+    // Build recipient list — REPORT_EMAIL + extra for remanent
+    const baseEmail = process.env.REPORT_EMAIL || userEmail
+    const REMANENT_CC = 'jakub.zagorski@gmail.com'
+    const to = type === 'remanent' && baseEmail
+      ? [baseEmail, REMANENT_CC].filter((v, i, a) => a.indexOf(v) === i) // dedupe
+      : baseEmail
     if (!to) {
       return NextResponse.json({ ok: false, error: 'No recipient email configured' }, { status: 400 })
     }
@@ -115,6 +120,65 @@ export async function POST(req: NextRequest) {
                 <td style="padding: 8px; border: 1px solid #e5e7eb; ${t.done ? '' : 'color: #9ca3af;'}">${t.name}</td>
               </tr>
             `).join('')}
+          </table>
+          <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Wysłano automatycznie z KitchenOps</p>
+        </div>
+      `
+    }
+
+    if (type === 'remanent') {
+      const totalItems = data.entries?.length || 0
+      const totalValue = data.totalValue ? `${(data.totalValue / 100).toFixed(2)} zł` : '—'
+      subject = `📊 KitchenOps — Remanent — ${data.date} — ${totalItems} pozycji`
+
+      // Group entries by category
+      const grouped: Record<string, { name: string; quantity: number; unit: string; custom?: boolean }[]> = {}
+      for (const e of (data.entries || [])) {
+        const cat = data.categories?.[e.name] || (e.custom ? 'Dodane ręcznie' : 'Inne')
+        if (!grouped[cat]) grouped[cat] = []
+        grouped[cat].push(e)
+      }
+
+      const categoryOrder = [
+        'Sosy', 'Marynaty mięsne', 'Bazy i gotowe',
+        'Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie',
+        'Przyprawy', 'Inne', 'Opakowania', 'Dodane ręcznie',
+      ]
+      const sortedCats = categoryOrder.filter(c => grouped[c]?.length)
+      // Add any remaining categories
+      for (const c of Object.keys(grouped)) {
+        if (!sortedCats.includes(c)) sortedCats.push(c)
+      }
+
+      const catSections = sortedCats.map(cat => `
+        <tr style="background: #f3f4f6;">
+          <td colspan="3" style="padding: 10px 8px; font-weight: bold; font-size: 14px; border: 1px solid #e5e7eb;">${cat} (${grouped[cat].length})</td>
+        </tr>
+        ${grouped[cat].map(e => `
+          <tr>
+            <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${e.custom ? '✚ ' : ''}${e.name}</td>
+            <td style="text-align: right; padding: 6px 8px; border: 1px solid #e5e7eb; font-weight: bold;">${e.quantity}</td>
+            <td style="text-align: center; padding: 6px 8px; border: 1px solid #e5e7eb; color: #6b7280;">${e.unit}</td>
+          </tr>
+        `).join('')}
+      `).join('')
+
+      html = `
+        <div style="font-family: system-ui, sans-serif; max-width: 600px;">
+          <h2 style="color: #4f46e5;">📊 Remanent — Stany Magazynowe</h2>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+            <tr><td style="padding: 6px; color: #6b7280;">Data</td><td style="padding: 6px; font-weight: bold;">${data.date}</td></tr>
+            <tr><td style="padding: 6px; color: #6b7280;">Spisał(a)</td><td style="padding: 6px; font-weight: bold;">${data.employee}</td></tr>
+            <tr><td style="padding: 6px; color: #6b7280;">Pozycji</td><td style="padding: 6px; font-weight: bold;">${totalItems}</td></tr>
+            <tr><td style="padding: 6px; color: #6b7280;">Szac. wartość</td><td style="padding: 6px; font-weight: bold;">${totalValue}</td></tr>
+          </table>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr style="background: #4f46e5; color: white;">
+              <th style="text-align: left; padding: 8px; border: 1px solid #e5e7eb;">Produkt</th>
+              <th style="text-align: right; padding: 8px; border: 1px solid #e5e7eb;">Ilość</th>
+              <th style="text-align: center; padding: 8px; border: 1px solid #e5e7eb;">Jedn.</th>
+            </tr>
+            ${catSections}
           </table>
           <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">Wysłano automatycznie z KitchenOps</p>
         </div>
@@ -285,6 +349,22 @@ export async function POST(req: NextRequest) {
           const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
           const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
           console.log('>>> Loss sheets status:', sheetsRes.status)
+          sheetsOk = sheetsRes.ok
+        } else if (type === 'remanent') {
+          sheetsPayload.data = {
+            date: data.date,
+            employee: data.employee || '',
+            total_items: data.entries?.length || 0,
+            entries: (data.entries || []).map((e: any) => ({
+              name: e.name,
+              quantity: e.quantity,
+              unit: e.unit,
+              custom: e.custom || false,
+            })),
+          }
+          const getUrl = sheetsUrl + '?payload=' + encodeURIComponent(JSON.stringify(sheetsPayload))
+          const sheetsRes = await fetch(getUrl, { method: 'GET', redirect: 'follow' })
+          console.log('>>> Remanent sheets status:', sheetsRes.status)
           sheetsOk = sheetsRes.ok
         } else if (type === 'cleaning') {
           sheetsPayload.data.date = data.date
