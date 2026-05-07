@@ -343,7 +343,7 @@ export default function RemanentPage() {
   const todayStr = new Date().toISOString().split('T')[0]
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className="min-h-screen bg-gray-50 pb-40">
       {/* Header */}
       <div className="bg-gradient-to-br from-indigo-600 to-purple-600 text-white px-4 pt-12 pb-6">
         <div className="flex items-center gap-3 mb-1">
@@ -566,7 +566,7 @@ export default function RemanentPage() {
           </div>
 
           {/* Save / Clear buttons */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 flex gap-3 z-50">
+          <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex gap-3 z-[999]">
             <button
               onClick={handleClear}
               className="px-4 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium"
