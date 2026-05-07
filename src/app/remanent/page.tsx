@@ -3,13 +3,62 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
 
+import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
+
 // ─── Config ────────────────────────────────────────────────
 const INGREDIENTS = FOODCOST_PRODUCTS.filter(p => p.type === 'ingredient')
-const CATEGORY_ORDER = ['Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie', 'Przyprawy', 'Inne', 'Opakowania']
+
+// ─── Gotowe produkty (półprodukty z receptur) ──────────────
+// Wyciągamy unikalne nazwy składników z receptur, które NIE występują
+// w surowcach — to sosy, marynaty, bazy robione na miejscu
+const RAW_NAMES = new Set(FOODCOST_PRODUCTS.map(p => p.name))
+
+interface PreparedProduct {
+  name: string
+  category: string
+  unit: string
+}
+
+// Ręcznie skategoryzowane półprodukty z receptur + GoPOS modifiers
+const PREPARED_PRODUCTS: PreparedProduct[] = [
+  // Sosy (z receptur)
+  { name: 'Sos Sezamowy',        category: 'Sosy',           unit: 'kg' },
+  { name: 'Sos Kokosowy',        category: 'Sosy',           unit: 'kg' },
+  { name: 'Sos Chilli Teriyaki', category: 'Sosy',           unit: 'kg' },
+  { name: 'Sos Miso Teriyaki',   category: 'Sosy',           unit: 'kg' },
+  { name: 'Sos Curry',           category: 'Sosy',           unit: 'kg' },
+  { name: 'Sos Mango',           category: 'Sosy',           unit: 'kg' },
+  { name: 'Teriyaki',            category: 'Sosy',           unit: 'kg' },
+  // Marynowane mięsa (z receptur)
+  { name: 'Pierś z Kury (marynat.)',   category: 'Marynaty mięsne', unit: 'kg' },
+  { name: 'Pierś z Kaczki (marynat.)', category: 'Marynaty mięsne', unit: 'kg' },
+  { name: 'Rostbef (marynowany)',       category: 'Marynaty mięsne', unit: 'kg' },
+  { name: 'Polędwiczka (marynat.)',     category: 'Marynaty mięsne', unit: 'kg' },
+  { name: 'Udko Marynowane',           category: 'Marynaty mięsne', unit: 'kg' },
+  // Bazy i inne gotowe (z receptur + GoPOS)
+  { name: 'Baza Warzywna',       category: 'Bazy i gotowe',  unit: 'kg' },
+  { name: 'Baza Wegańska',       category: 'Bazy i gotowe',  unit: 'kg' },
+  { name: 'Baza Wegetariańska',  category: 'Bazy i gotowe',  unit: 'kg' },
+  { name: 'Ryż z Zalewą',        category: 'Bazy i gotowe',  unit: 'kg' },
+  { name: 'Olej z Wkładem',      category: 'Bazy i gotowe',  unit: 'L' },
+  { name: 'Ziarna Mix',          category: 'Bazy i gotowe',  unit: 'kg' },
+  // Dodatkowe z GoPOS (modifiers sprzedawane, ale nie w foodcost)
+  { name: 'Boczniak',            category: 'Warzywa',         unit: 'kg' },
+]
+
+const CATEGORY_ORDER = [
+  // Gotowe produkty FIRST — kucharze najpierw liczą co jest gotowe
+  'Sosy', 'Marynaty mięsne', 'Bazy i gotowe',
+  // Potem surowce
+  'Makarony', 'Mięso', 'Ryby', 'Warzywa', 'Azjatyckie', 'Przyprawy', 'Inne', 'Opakowania',
+]
 const LS_KEY = 'kitchenops_remanent'
 
 // Category icons for visual grouping
 const CAT_ICONS: Record<string, string> = {
+  'Sosy': '🫗',
+  'Marynaty mięsne': '🥩',
+  'Bazy i gotowe': '🍲',
   'Makarony': '🍜',
   'Mięso': '🥩',
   'Ryby': '🐟',
@@ -84,16 +133,23 @@ export default function RemanentPage() {
   const [newCustomCategory, setNewCustomCategory] = useState('Inne')
   let nextCustomId = customProducts.length > 0 ? Math.max(...customProducts.map(c => c.id)) + 1 : 1
 
-  // Init entries from INGREDIENTS
+  // Init entries from INGREDIENTS + PREPARED_PRODUCTS
   useEffect(() => {
-    const initial: RemanentEntry[] = INGREDIENTS.map(p => ({
+    const fromRaw: RemanentEntry[] = INGREDIENTS.map(p => ({
       name: p.name,
       category: p.category,
       quantity: '',
       unit: getUnit(p.name),
       pricePerKg: p.price_per_kg,
     }))
-    setEntries(initial)
+    const fromPrepared: RemanentEntry[] = PREPARED_PRODUCTS.map(p => ({
+      name: p.name,
+      category: p.category,
+      quantity: '',
+      unit: p.unit,
+      pricePerKg: null,
+    }))
+    setEntries([...fromPrepared, ...fromRaw])
     setHistory(loadHistory())
   }, [])
 
@@ -144,6 +200,19 @@ export default function RemanentPage() {
     } else {
       setEntries(prev => prev.map(e =>
         e.name === name ? { ...e, quantity: cleanVal } : e
+      ))
+    }
+    setSaved(false)
+  }, [])
+
+  const updateUnit = useCallback((name: string, unit: string) => {
+    if (name.startsWith('✚ ')) {
+      setCustomProducts(prev => prev.map(cp =>
+        `✚ ${cp.name}` === name ? { ...cp, unit } : cp
+      ))
+    } else {
+      setEntries(prev => prev.map(e =>
+        e.name === name ? { ...e, unit } : e
       ))
     }
     setSaved(false)
@@ -261,7 +330,7 @@ export default function RemanentPage() {
             <div className="text-xs text-indigo-100">Uzupełnione</div>
           </div>
           <div className="flex-1 bg-white/15 backdrop-blur rounded-xl p-3 text-center">
-            <div className="text-2xl font-bold">{INGREDIENTS.length}</div>
+            <div className="text-2xl font-bold">{INGREDIENTS.length + PREPARED_PRODUCTS.length}</div>
             <div className="text-xs text-indigo-100">Wszystkich</div>
           </div>
           <div className="flex-1 bg-white/15 backdrop-blur rounded-xl p-3 text-center">
@@ -442,7 +511,15 @@ export default function RemanentPage() {
                                 }
                                 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400`}
                             />
-                            <span className="text-xs text-gray-400 w-6">{entry.unit}</span>
+                            <select
+                              value={entry.unit}
+                              onChange={e => updateUnit(entry.name, e.target.value)}
+                              className="text-xs text-gray-500 w-10 bg-transparent border-none focus:outline-none cursor-pointer appearance-none"
+                            >
+                              <option value="kg">kg</option>
+                              <option value="L">L</option>
+                              <option value="szt">szt</option>
+                            </select>
                             {isCustom && customItem && (
                               <button
                                 onClick={() => removeCustomProduct(customItem.id)}
