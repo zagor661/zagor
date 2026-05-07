@@ -115,6 +115,14 @@ export async function getOrderItemsReportByProduct(orgId: string, dateStart: str
   })
 }
 
+export async function getOrderItemsReportByOrder(orgId: string) {
+  // Group by ORDER then PRODUCT — per-order item breakdown in 1 API call
+  return goposGet('/api/v3/reports/order_items', {
+    organization_id: orgId,
+    groups: 'NONE,ORDER,PRODUCT',
+  })
+}
+
 export async function getOrdersReport(orgId: string, dateStart: string, dateEnd: string) {
   // GoPOS reports API doesn't support closed_at date filtering (returns 500)
   // Use CREATED_AT_DATE grouping → server-side date filtering in route.ts

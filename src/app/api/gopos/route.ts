@@ -4,7 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
-  getOrders, getOrderItems, getOrderDetail,
+  getOrders, getOrderItems, getOrderDetail, getOrderItemsReportByOrder,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -259,32 +259,23 @@ export async function GET(req: NextRequest) {
       }
 
       case 'kompozycja_debug': {
-        // DEBUG: show raw structure of 1 order detail (includes items?)
+        // DEBUG: test NONE,ORDER,PRODUCT grouping — shows per-order items in 1 call
         requireOrg()
-        const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
-        const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
 
-        const allOrders = await getOrders(orgId, kStart, kEnd)
-        const orderList: any[] = allOrders?.data || allOrders || []
+        let reportByOrder = null
+        try { reportByOrder = await getOrderItemsReportByOrder(orgId) } catch (e: any) { reportByOrder = { error: e.message } }
 
-        if (orderList.length === 0) {
-          return NextResponse.json({ ok: true, msg: 'no orders', total: 0 })
-        }
-
-        // Pick last order
-        const sampleOrd = orderList[orderList.length - 1]
-        const ordId = sampleOrd.id || sampleOrd.order_id
-
-        // Fetch full detail via /orders/{id}
-        let detail = null
-        try { detail = await getOrderDetail(orgId, ordId) } catch (e: any) { detail = { error: e.message } }
+        // Show just first 2 orders from the report to understand structure
+        const reports: any[] = reportByOrder?.reports || []
+        const noneLevel = reports[0]
+        const orderEntries: any[] = (noneLevel?.sub_report || []).slice(-2) // last 2 orders
 
         return NextResponse.json({
           ok: true,
-          total_orders: orderList.length,
-          list_order_keys: Object.keys(sampleOrd),
-          detail_keys: detail && !detail.error ? Object.keys(detail) : null,
-          detail_full: detail,
+          grouping: 'NONE,ORDER,PRODUCT',
+          total_order_entries: noneLevel?.sub_report?.length || 0,
+          sample_orders: orderEntries,
+          raw_error: reportByOrder?.error || null,
         })
       }
 
