@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole, normalizeRole } from '@/lib/roles'
@@ -84,6 +84,8 @@ export default function FoodCostPage() {
   const [salesLoading, setSalesLoading] = useState(false)
   const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
   const [salesTotalQty, setSalesTotalQty] = useState(0)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Search
   const [searchIng, setSearchIng] = useState('')
@@ -102,26 +104,21 @@ export default function FoodCostPage() {
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null)
 
   // ─── Fetch sales from GoPOS ────────────────────────────
-  useEffect(() => {
-    if (tab === 'sales' && canAccess) fetchSales(salesPeriod)
-  }, [tab, salesPeriod, canAccess])
-
-  async function fetchSales(period: SalesPeriod) {
-    setSalesLoading(true)
+  const fetchSales = useCallback(async (period: SalesPeriod, silent = false) => {
+    if (!silent) setSalesLoading(true)
     try {
       const { start, end } = getSalesPeriodRange(period)
       const res = await fetch(`/api/gopos?action=sales_by_item&date_start=${start}&date_end=${end}`)
       const json = await res.json()
 
       if (!json.ok) {
-        setSalesItems([])
-        setSalesLoading(false)
+        if (!silent) setSalesItems([])
+        if (!silent) setSalesLoading(false)
         return
       }
 
       // Parse report items (from NONE,PRODUCT grouping)
       const rawItems = json.data?.items || []
-      const summary = json.data?.summary || {}
       const items: SalesItemData[] = []
 
       for (const ri of rawItems) {
@@ -139,16 +136,36 @@ export default function FoodCostPage() {
 
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
-      // Use summary from server for totals (includes all items)
       const paidRevenue = items.reduce((s, i) => s + i.revenue, 0)
       const paidQty = items.reduce((s, i) => s + i.quantity, 0)
       setSalesTotalRevenue(paidRevenue)
       setSalesTotalQty(paidQty)
+      setLastRefresh(new Date())
     } catch {
-      setSalesItems([])
+      if (!silent) setSalesItems([])
     }
-    setSalesLoading(false)
-  }
+    if (!silent) setSalesLoading(false)
+  }, [])
+
+  // Initial fetch + auto-refresh every 60s
+  useEffect(() => {
+    if (tab === 'sales' && canAccess) {
+      fetchSales(salesPeriod)
+
+      // Auto-refresh co 60s (silent — bez loading spinner)
+      refreshTimer.current = setInterval(() => {
+        fetchSales(salesPeriod, true)
+      }, 60_000)
+
+      return () => {
+        if (refreshTimer.current) clearInterval(refreshTimer.current)
+      }
+    }
+    // Cleanup when leaving sales tab
+    return () => {
+      if (refreshTimer.current) clearInterval(refreshTimer.current)
+    }
+  }, [tab, salesPeriod, canAccess, fetchSales])
 
   function getSalesPeriodRange(p: SalesPeriod): { start: string; end: string } {
     const now = new Date()
@@ -314,6 +331,19 @@ export default function FoodCostPage() {
                 </button>
               ))}
             </div>
+
+            {/* Auto-refresh indicator */}
+            {lastRefresh && !salesLoading && (
+              <div className="flex items-center justify-between px-1 mb-2">
+                <span className="text-[10px] text-gray-400">
+                  <span className="inline-block w-1.5 h-1.5 bg-green-400 rounded-full mr-1 animate-pulse" />
+                  Live — auto-refresh co 60s
+                </span>
+                <span className="text-[10px] text-gray-300">
+                  {lastRefresh.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </div>
+            )}
 
             {salesLoading ? (
               <div className="flex items-center justify-center py-12">
