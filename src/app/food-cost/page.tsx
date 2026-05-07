@@ -142,8 +142,11 @@ export default function FoodCostPage() {
       const compMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
       let kompCount = 0
 
-      // Known numbered dishes (keys from GOPOS_TO_FC)
-      const knownDishes = new Set(Object.keys(GOPOS_TO_FC))
+      // Known Kompozycja paid add-ons (proteins/extras, NOT drinks)
+      const KOMP_ADDONS = new Set([
+        'Rostbef Marynowany', 'Udko z Kurczaka Marynowane', 'Mix Chilli',
+        'Krewetka', 'Łosoś', 'Tofu', 'Kurczak Marynowany',
+      ])
 
       for (const ri of rawItems) {
         const goposName = ri.name || 'Nieznany'
@@ -158,15 +161,15 @@ export default function FoodCostPage() {
         }
 
         if (revenue > 0) {
-          // Items with revenue go to main sales list
+          // All paid items go to main sales list
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
 
-          // Paid add-ons (not a known dish) also count as composition components
-          if (!knownDishes.has(goposName) && !goposName.includes('Kompozycja')) {
+          // Only known add-ons go to composition components (not drinks/dishes)
+          if (KOMP_ADDONS.has(goposName)) {
             compMap[goposName] = { name: goposName, quantity: qty, revenue }
           }
         } else if (qty > 0) {
-          // 0-revenue items = free composition components
+          // 0-revenue items = free composition components (bases, noodles, sauces, toppings)
           compMap[goposName] = { name: goposName, quantity: qty, revenue: 0 }
         }
       }
@@ -502,69 +505,68 @@ export default function FoodCostPage() {
                               </span>
                             </div>
 
-                            {/* Paid add-ons */}
-                            {kompozycjaComponents.some(c => c.revenue > 0) && (
-                              <>
-                                <div className="text-[10px] text-purple-400 font-semibold">Płatne dodatki</div>
-                                {kompozycjaComponents.filter(c => c.revenue > 0).map((comp, ci) => {
-                                  const pct = kompozycjaCount > 0 ? Math.round((comp.quantity / kompozycjaCount) * 100) : 0
-                                  return (
-                                    <div key={`p-${ci}`} className="bg-white rounded-lg px-3 py-2">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-[10px]">💰</span>
-                                          <span className="text-xs text-gray-700 font-medium">{comp.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
-                                          <span className="text-xs font-bold text-purple-600">{comp.revenue} zł</span>
-                                        </div>
-                                      </div>
-                                      <div className="mt-1 flex items-center gap-2">
-                                        <div className="flex-1 bg-purple-100 rounded-full h-1">
-                                          <div className="h-1 rounded-full bg-purple-400" style={{ width: `${Math.min(pct, 100)}%` }} />
-                                        </div>
-                                        <span className="text-[10px] text-purple-400 w-8 text-right">{pct}%</span>
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </>
-                            )}
+                            {(() => {
+                              // Find max quantity for relative bar scaling
+                              const maxQty = Math.max(...kompozycjaComponents.map(c => c.quantity), 1)
+                              const paid = kompozycjaComponents.filter(c => c.revenue > 0)
+                              const free = kompozycjaComponents.filter(c => c.revenue === 0)
 
-                            {/* Free components */}
-                            {kompozycjaComponents.some(c => c.revenue === 0) && (
-                              <>
-                                <div className="text-[10px] text-purple-400 font-semibold mt-1">Składniki w cenie</div>
-                                {kompozycjaComponents.filter(c => c.revenue === 0).map((comp, ci) => {
-                                  const pct = kompozycjaCount > 0 ? Math.round((comp.quantity / kompozycjaCount) * 100) : 0
-                                  return (
-                                    <div key={`f-${ci}`} className="bg-white rounded-lg px-3 py-2">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-[10px]">🥬</span>
-                                          <span className="text-xs text-gray-700">{comp.name}</span>
+                              return (
+                                <>
+                                  {/* Paid add-ons (proteins/extras) */}
+                                  {paid.length > 0 && (
+                                    <>
+                                      <div className="text-[10px] text-purple-400 font-semibold">Płatne dodatki do kompozycji</div>
+                                      {paid.map((comp, ci) => (
+                                        <div key={`p-${ci}`} className="bg-white rounded-lg px-3 py-2">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[10px]">🥩</span>
+                                              <span className="text-xs text-gray-700 font-medium">{comp.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                              <span className="text-xs text-gray-500 font-bold">{comp.quantity}x</span>
+                                              <span className="text-xs font-bold text-purple-600">+{Math.round(comp.revenue / comp.quantity)} zł</span>
+                                            </div>
+                                          </div>
+                                          <div className="mt-1 w-full bg-purple-100 rounded-full h-1">
+                                            <div className="h-1 rounded-full bg-purple-400" style={{ width: `${(comp.quantity / maxQty) * 100}%` }} />
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
-                                          <span className="text-[10px] text-gray-400">~{comp.perBox}/box</span>
-                                        </div>
-                                      </div>
-                                      <div className="mt-1 flex items-center gap-2">
-                                        <div className="flex-1 bg-gray-100 rounded-full h-1">
-                                          <div className="h-1 rounded-full bg-purple-300" style={{ width: `${Math.min(pct, 100)}%` }} />
-                                        </div>
-                                        <span className="text-[10px] text-purple-300 w-8 text-right">{pct}%</span>
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </>
-                            )}
+                                      ))}
+                                    </>
+                                  )}
 
-                            <div className="text-[10px] text-purple-300 text-center pt-2 border-t border-purple-100">
-                              % = ile kompozycji zawierało ten składnik · ~X/box = średnio na 1 kompozycję
-                            </div>
+                                  {/* Free components */}
+                                  {free.length > 0 && (
+                                    <>
+                                      <div className="text-[10px] text-purple-400 font-semibold mt-1">Składniki w cenie kompozycji</div>
+                                      {free.map((comp, ci) => (
+                                        <div key={`f-${ci}`} className="bg-white rounded-lg px-3 py-2">
+                                          <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-[10px]">🥬</span>
+                                              <span className="text-xs text-gray-700">{comp.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs text-gray-500 font-bold">{comp.quantity}x</span>
+                                              <span className="text-[10px] text-purple-400">~{comp.perBox}/box</span>
+                                            </div>
+                                          </div>
+                                          <div className="mt-1 w-full bg-gray-100 rounded-full h-1">
+                                            <div className="h-1 rounded-full bg-purple-300" style={{ width: `${(comp.quantity / maxQty) * 100}%` }} />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </>
+                                  )}
+
+                                  <div className="text-[10px] text-purple-300 text-center pt-2 border-t border-purple-100">
+                                    Pasek = popularność względem najczęściej wybieranego · ~X/box = średnio na 1 kompozycję
+                                  </div>
+                                </>
+                              )
+                            })()}
                           </div>
                         )}
                       </div>
