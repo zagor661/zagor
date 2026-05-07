@@ -115,11 +115,15 @@ export async function getOrderItemsReportByProduct(orgId: string, dateStart: str
   })
 }
 
-export async function getOrderItemsReportByOrder(orgId: string) {
-  // Group by ORDER then PRODUCT — per-order item breakdown in 1 API call
+export async function getAllOrderItems(orgId: string) {
+  // Fetch all order items at org level (may include order_id field)
+  return goposGet(`/api/v3/${orgId}/order_items`)
+}
+
+export async function getOrderItemsReportByTransaction(orgId: string) {
   return goposGet('/api/v3/reports/order_items', {
     organization_id: orgId,
-    groups: 'NONE,ORDER,PRODUCT',
+    groups: 'NONE,TRANSACTION,PRODUCT',
   })
 }
 

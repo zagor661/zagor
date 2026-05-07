@@ -4,7 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
-  getOrders, getOrderItems, getOrderDetail, getOrderItemsReportByOrder,
+  getOrders, getOrderItems, getOrderDetail, getAllOrderItems, getOrderItemsReportByTransaction,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -259,23 +259,53 @@ export async function GET(req: NextRequest) {
       }
 
       case 'kompozycja_debug': {
-        // DEBUG: test NONE,ORDER,PRODUCT grouping — shows per-order items in 1 call
+        // DEBUG: try 2 approaches to get per-order items
         requireOrg()
 
-        let reportByOrder = null
-        try { reportByOrder = await getOrderItemsReportByOrder(orgId) } catch (e: any) { reportByOrder = { error: e.message } }
+        // Approach 1: /org/order_items (all items at org level)
+        let allItems = null
+        try {
+          allItems = await getAllOrderItems(orgId)
+        } catch (e: any) {
+          allItems = { error: e.message }
+        }
 
-        // Show just first 2 orders from the report to understand structure
-        const reports: any[] = reportByOrder?.reports || []
-        const noneLevel = reports[0]
-        const orderEntries: any[] = (noneLevel?.sub_report || []).slice(-2) // last 2 orders
+        // Approach 2: TRANSACTION grouping in reports
+        let txReport = null
+        try {
+          txReport = await getOrderItemsReportByTransaction(orgId)
+        } catch (e: any) {
+          txReport = { error: e.message }
+        }
+
+        // Summarize results
+        const allItemsPreview = allItems?.error
+          ? { error: allItems.error }
+          : {
+              type: typeof allItems,
+              isArray: Array.isArray(allItems),
+              hasData: !!allItems?.data,
+              keys: allItems ? Object.keys(allItems).slice(0, 10) : [],
+              sample: Array.isArray(allItems?.data)
+                ? allItems.data.slice(-2)
+                : Array.isArray(allItems)
+                  ? allItems.slice(-2)
+                  : null,
+              count: allItems?.data?.length || (Array.isArray(allItems) ? allItems.length : null),
+            }
+
+        const txReportPreview = txReport?.error
+          ? { error: txReport.error }
+          : {
+              hasReports: !!txReport?.reports,
+              topLevelEntries: txReport?.reports?.[0]?.sub_report?.length || 0,
+              sample: (txReport?.reports?.[0]?.sub_report || []).slice(-1),
+            }
 
         return NextResponse.json({
           ok: true,
-          grouping: 'NONE,ORDER,PRODUCT',
-          total_order_entries: noneLevel?.sub_report?.length || 0,
-          sample_orders: orderEntries,
-          raw_error: reportByOrder?.error || null,
+          approach1_all_order_items: allItemsPreview,
+          approach2_transaction_report: txReportPreview,
         })
       }
 
