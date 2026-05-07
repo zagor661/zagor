@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole, normalizeRole } from '@/lib/roles'
@@ -21,7 +21,35 @@ interface Recipe {
   lines: RecipeLine[]
 }
 
-type TabType = 'recipes' | 'ingredients' | 'add-recipe'
+// ─── GoPOS ↔ Food Cost mapping ─────────────────────────────
+// GoPOS name → foodcostProducts dish name
+const GOPOS_TO_FC: Record<string, string> = {
+  '01 TOKYO': 'TOKIO',
+  '02 JOKOHAMA': 'YOKOHAMA',
+  '03 OSAKA': 'OSAKA',
+  '04 KOBE': 'KOBE',
+  '05 SAPPORO': 'SAPPORO',
+  '06 NAGOJA': 'NAGOJA',
+  '07 WEGETARIAN SAN': 'WEGETARIAN SAN',
+  '08 SAN VEGAN': 'SAN WEGAN',
+  '09 SAMON SAN': 'SAMON SAN',
+  '10 SENDAI': 'SENDAI',
+  '11 NARA': 'NARA',
+  '12 Kompozycja Własna': 'KOMPOZYCJA',
+  '13 Kompozycja Własna Krewetka': 'KOMPOZYCJA KREWETKA',
+}
+
+interface SalesItemData {
+  goposName: string
+  fcName: string | null
+  quantity: number
+  revenue: number
+  sellingPrice: number
+}
+
+type SalesPeriod = 'today' | 'week' | 'month'
+
+type TabType = 'sales' | 'recipes' | 'ingredients' | 'add-recipe'
 
 const RECIPE_CATEGORIES = [
   { value: 'main', label: 'Danie główne' },
@@ -56,8 +84,15 @@ export default function FoodCostPage() {
   const { user, loading } = useUser()
   const canAccess = user ? (isAdminRole(user.role) || normalizeRole(user.role) === 'kitchen') : false
 
-  const [tab, setTab] = useState<TabType>('ingredients')
+  const [tab, setTab] = useState<TabType>('sales')
   const [recipes, setRecipes] = useState<Recipe[]>(loadRecipes)
+
+  // Sales state
+  const [salesPeriod, setSalesPeriod] = useState<SalesPeriod>('today')
+  const [salesItems, setSalesItems] = useState<SalesItemData[]>([])
+  const [salesLoading, setSalesLoading] = useState(false)
+  const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
+  const [salesTotalQty, setSalesTotalQty] = useState(0)
 
   // Search
   const [searchIng, setSearchIng] = useState('')
@@ -74,6 +109,80 @@ export default function FoodCostPage() {
 
   // Detail view
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null)
+
+  // ─── Fetch sales from GoPOS ────────────────────────────
+  useEffect(() => {
+    if (tab === 'sales' && canAccess) fetchSales(salesPeriod)
+  }, [tab, salesPeriod, canAccess])
+
+  async function fetchSales(period: SalesPeriod) {
+    setSalesLoading(true)
+    try {
+      const { start, end } = getSalesPeriodRange(period)
+      const res = await fetch(`/api/gopos?action=sales_by_item&date_start=${start}&date_end=${end}`)
+      const json = await res.json()
+
+      if (!json.ok) {
+        setSalesItems([])
+        setSalesLoading(false)
+        return
+      }
+
+      // Parse sub_report from GoPOS ITEM-grouped response
+      const reports = json.data?.reports || []
+      const subReports = reports[0]?.sub_report || []
+      const items: SalesItemData[] = []
+      let totalRev = 0
+      let totalQty = 0
+
+      for (const sr of subReports) {
+        const goposName = sr.name || sr.item_name || 'Nieznany'
+        const qty = sr.aggregate?.sales?.product_quantity || 0
+        const revenue = sr.aggregate?.sales?.total_money?.amount || 0
+        const sellingPrice = qty > 0 ? revenue / qty : 0
+        const fcName = GOPOS_TO_FC[goposName] || null
+
+        if (qty > 0) {
+          items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
+          totalRev += revenue
+          totalQty += qty
+        }
+      }
+
+      items.sort((a, b) => b.revenue - a.revenue)
+      setSalesItems(items)
+      setSalesTotalRevenue(totalRev)
+      setSalesTotalQty(totalQty)
+    } catch {
+      setSalesItems([])
+    }
+    setSalesLoading(false)
+  }
+
+  function getSalesPeriodRange(p: SalesPeriod): { start: string; end: string } {
+    const now = new Date()
+    const end = now.toISOString().split('T')[0]
+    switch (p) {
+      case 'today': return { start: end, end }
+      case 'week': {
+        const d = new Date(now); d.setDate(d.getDate() - 7)
+        return { start: d.toISOString().split('T')[0], end }
+      }
+      case 'month': {
+        const d = new Date(now.getFullYear(), now.getMonth(), 1)
+        return { start: d.toISOString().split('T')[0], end }
+      }
+    }
+  }
+
+  // Match a GoPOS item to a local recipe for FC% calculation
+  function getRecipeFc(fcName: string | null, sellingPrice: number): number | null {
+    if (!fcName) return null
+    const recipe = recipes.find(r => r.name.toUpperCase() === fcName.toUpperCase())
+    if (!recipe || recipe.lines.length === 0) return null
+    const cost = calcCost(recipe.lines) / (recipe.portions || 1)
+    return sellingPrice > 0 ? (cost / sellingPrice) * 100 : null
+  }
 
   // ─── Filtered ingredients ──────────────────────────────
   const filteredIngredients = useMemo(() => {
@@ -170,6 +279,7 @@ export default function FoodCostPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 bg-white">
         {([
+          ['sales', '📈 Sprzedaz'],
           ['ingredients', '🥬 Składniki'],
           ['recipes', '🍜 Przepisy'],
           ['add-recipe', '+ Przepis'],
@@ -187,6 +297,132 @@ export default function FoodCostPage() {
       </div>
 
       <div className="max-w-lg mx-auto p-4">
+
+        {/* ═══════════════════════════════════════════════
+             SALES TAB — live z GoPOS
+           ═══════════════════════════════════════════════ */}
+        {tab === 'sales' && (
+          <div className="space-y-4">
+            {/* Period selector */}
+            <div className="flex gap-2">
+              {([
+                ['today', 'Dzisiaj'],
+                ['week', '7 dni'],
+                ['month', 'Miesiąc'],
+              ] as [SalesPeriod, string][]).map(([p, label]) => (
+                <button
+                  key={p}
+                  onClick={() => setSalesPeriod(p)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    salesPeriod === p
+                      ? 'bg-gray-900 text-white shadow-md'
+                      : 'bg-white text-gray-600 border border-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {salesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-green-200 border-t-green-600" />
+              </div>
+            ) : salesItems.length === 0 ? (
+              <div className="text-center py-10">
+                <div className="text-4xl mb-2 opacity-30">📊</div>
+                <p className="text-gray-400 text-sm">Brak danych sprzedazowych</p>
+                <p className="text-[10px] text-gray-300 mt-1">Sprawdz polaczenie z GoPOS</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                    <div className="text-[10px] text-emerald-600 font-semibold">Przychod</div>
+                    <div className="text-lg font-bold text-emerald-700">
+                      {new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(salesTotalRevenue)}
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-3 text-center">
+                    <div className="text-[10px] text-blue-600 font-semibold">Sprzedano</div>
+                    <div className="text-lg font-bold text-blue-700">{Math.round(salesTotalQty)}</div>
+                  </div>
+                  <div className="bg-violet-50 rounded-xl p-3 text-center">
+                    <div className="text-[10px] text-violet-600 font-semibold">Sr. cena</div>
+                    <div className="text-lg font-bold text-violet-700">
+                      {salesTotalQty > 0 ? `${(salesTotalRevenue / salesTotalQty).toFixed(0)} zl` : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per-item breakdown */}
+                <div className="space-y-2">
+                  {salesItems.map((item, i) => {
+                    const fc = getRecipeFc(item.fcName, item.sellingPrice)
+                    const hasRecipe = item.fcName && recipes.some(r => r.name.toUpperCase() === item.fcName?.toUpperCase())
+
+                    return (
+                      <div key={i} className="bg-white rounded-xl border border-gray-100 p-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
+                            i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                            i === 1 ? 'bg-gray-100 text-gray-600' :
+                            i === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-50 text-gray-400'
+                          }`}>
+                            {i + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 text-sm truncate">{item.goposName}</div>
+                            <div className="text-[10px] text-gray-400">
+                              {Math.round(item.quantity)}x · {item.sellingPrice.toFixed(0)} zl/szt
+                              {item.fcName && !hasRecipe && (
+                                <span className="ml-1 text-amber-500">· brak receptury</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="font-bold text-gray-900 text-sm">
+                              {new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(item.revenue)}
+                            </div>
+                            {fc !== null ? (
+                              <div className={`text-[10px] font-bold ${
+                                fc <= 30 ? 'text-green-600' : fc <= 35 ? 'text-amber-600' : 'text-red-600'
+                              }`}>
+                                FC: {fc.toFixed(1)}%
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-gray-300">FC: —</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Revenue bar */}
+                        <div className="mt-2 w-full bg-gray-100 rounded-full h-1">
+                          <div
+                            className="h-1 rounded-full bg-emerald-400"
+                            style={{ width: `${Math.min((item.revenue / salesTotalRevenue) * 100, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Info */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-gray-400">
+                    Dane live z GoPOS · FC% liczone z Twoich receptur
+                  </p>
+                  <p className="text-[10px] text-gray-300 mt-0.5">
+                    Dodaj receptury w zakladce &quot;Przepisy&quot; zeby zobaczyc FC%
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════
              INGREDIENTS TAB — z foodcostProducts.ts
