@@ -66,6 +66,22 @@ export async function GET(req: NextRequest) {
         const noneLevel = reports[0]
         const dateEntries: any[] = noneLevel?.sub_report || []
 
+        // Debug: return raw date format if requested
+        if (req.nextUrl.searchParams.get('debug') === '1') {
+          return NextResponse.json({
+            ok: true,
+            debug: {
+              total_dates: dateEntries.length,
+              sample_dates: dateEntries.slice(0, 5).map((d: any) => ({
+                group_by_type: d.group_by_type,
+                name: d.group_by_value?.name,
+                products: (d.sub_report || []).length,
+              })),
+              none_level_type: noneLevel?.group_by_type,
+            },
+          })
+        }
+
         // Aggregate products across matching dates
         const itemMap: Record<string, { name: string; quantity: number; revenue: number; net_revenue: number; transactions: number; discount: number }> = {}
         let totalRevenue = 0, totalNetRevenue = 0, totalQty = 0, totalTx = 0, totalDiscount = 0
