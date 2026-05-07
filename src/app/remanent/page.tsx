@@ -3,16 +3,10 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
 
-import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
-
 // ─── Config ────────────────────────────────────────────────
 const INGREDIENTS = FOODCOST_PRODUCTS.filter(p => p.type === 'ingredient')
 
 // ─── Gotowe produkty (półprodukty z receptur) ──────────────
-// Wyciągamy unikalne nazwy składników z receptur, które NIE występują
-// w surowcach — to sosy, marynaty, bazy robione na miejscu
-const RAW_NAMES = new Set(FOODCOST_PRODUCTS.map(p => p.name))
-
 interface PreparedProduct {
   name: string
   category: string
@@ -131,7 +125,6 @@ export default function RemanentPage() {
   const [newCustomName, setNewCustomName] = useState('')
   const [newCustomUnit, setNewCustomUnit] = useState('kg')
   const [newCustomCategory, setNewCustomCategory] = useState('Inne')
-  let nextCustomId = customProducts.length > 0 ? Math.max(...customProducts.map(c => c.id)) + 1 : 1
 
   // Init entries from INGREDIENTS + PREPARED_PRODUCTS
   useEffect(() => {
