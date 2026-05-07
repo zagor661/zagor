@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  getMe, getOrganization, getItems, getCategories, getOrders, getOrderDetail,
+  getMe, getOrganization, getItems, getCategories, getOrders, getOrderDetail, getOrderItems,
   getOrderItemsReport, getOrderItemsReportByItem, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
@@ -59,21 +59,18 @@ export async function GET(req: NextRequest) {
         const rawOrders = await getOrders(orgId, siStart, siEnd)
         const orderList: any[] = rawOrders?.data || []
 
-        // Batch fetch order details (5 at a time to avoid rate limits)
+        // Batch fetch order items (5 at a time to avoid rate limits)
         const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
         const batchSize = 5
 
         for (let i = 0; i < orderList.length; i += batchSize) {
           const batch = orderList.slice(i, i + batchSize)
-          const details = await Promise.all(
-            batch.map((o: any) => getOrderDetail(orgId, o.id).catch(() => null))
+          const results = await Promise.all(
+            batch.map((o: any) => getOrderItems(orgId, o.id).catch(() => null))
           )
 
-          for (const detail of details) {
-            if (!detail?.data) continue
-            const orderData = detail.data
-            const orderItems = orderData.order_items || orderData.items || []
-
+          for (const result of results) {
+            const orderItems = result?.data || []
             for (const item of orderItems) {
               const name = item.item?.name || item.item_name || item.name || 'Nieznany'
               const qty = item.quantity || 1
@@ -165,12 +162,11 @@ export async function GET(req: NextRequest) {
         const rawOrders2 = await getOrders(orgId, getToday(), getToday())
         const list2 = rawOrders2?.data || []
         if (list2.length === 0) return NextResponse.json({ ok: true, msg: 'no orders today' })
-        const detail = await getOrderDetail(orgId, list2[0].id)
+        const oi = await getOrderItems(orgId, list2[0].id)
         return NextResponse.json({
           ok: true,
           order_id: list2[0].id,
-          detail_keys: detail?.data ? Object.keys(detail.data) : 'no data',
-          detail_sample: JSON.stringify(detail?.data || detail).substring(0, 3000),
+          order_items_response: oi,
         })
       }
 
