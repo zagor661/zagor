@@ -110,8 +110,7 @@ export async function getOrderItemsReport(orgId: string, dateStart: string, date
 export async function getOrderItemsReportByProduct(orgId: string, dateStart: string, dateEnd: string) {
   return goposGet('/api/v3/reports/order_items', {
     organization_id: orgId,
-    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
-    groups: 'NONE,PRODUCT',
+    groups: 'NONE,CREATED_AT_DATE,PRODUCT',
   })
 }
 

@@ -4,7 +4,6 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
-  goposGet,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -53,32 +52,53 @@ export async function GET(req: NextRequest) {
       }
 
       case 'sales_by_item': {
-        // Use GoPOS reports API with NONE,PRODUCT grouping
+        // GoPOS reports API with NONE,CREATED_AT_DATE,PRODUCT grouping
+        // Date filtering done server-side (GoPOS doesn't support date params on reports)
         requireOrg()
         const siStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const siEnd = req.nextUrl.searchParams.get('date_end') || getToday()
         const report = await getOrderItemsReportByProduct(orgId, siStart, siEnd)
 
-        // Parse nested report structure: reports[0].sub_report[] = PRODUCT entries
+        // Structure: reports[0] = NONE (total)
+        //   → sub_report[] = CREATED_AT_DATE entries (one per day)
+        //     → sub_report[] = PRODUCT entries
         const reports: any[] = report?.reports || []
-        const noneLevel = reports[0] // group_by_type: NONE (summary)
-        const productEntries: any[] = noneLevel?.sub_report || []
+        const noneLevel = reports[0]
+        const dateEntries: any[] = noneLevel?.sub_report || []
 
-        const items = productEntries.map((entry: any) => {
-          const name = entry.group_by_value?.name || 'Nieznany'
-          const sales = entry.aggregate?.sales || {}
-          return {
-            name,
-            quantity: sales.product_quantity || 0,
-            revenue: sales.total_money?.amount || 0,
-            net_revenue: sales.net_total_money?.amount || 0,
-            transactions: sales.transaction_count || 0,
-            discount: sales.discount_money?.amount || 0,
+        // Aggregate products across matching dates
+        const itemMap: Record<string, { name: string; quantity: number; revenue: number; net_revenue: number; transactions: number; discount: number }> = {}
+        let totalRevenue = 0, totalNetRevenue = 0, totalQty = 0, totalTx = 0, totalDiscount = 0
+
+        for (const dateEntry of dateEntries) {
+          // dateEntry.group_by_value.name = date string like "2026-05-07"
+          const dateStr = dateEntry.group_by_value?.name || ''
+          // Filter: only include dates within requested range
+          if (dateStr < siStart || dateStr > siEnd) continue
+
+          const dateSales = dateEntry.aggregate?.sales || {}
+          totalRevenue += dateSales.total_money?.amount || 0
+          totalNetRevenue += dateSales.net_total_money?.amount || 0
+          totalQty += dateSales.product_quantity || 0
+          totalTx += dateSales.transaction_count || 0
+          totalDiscount += dateSales.discount_money?.amount || 0
+
+          const productEntries: any[] = dateEntry.sub_report || []
+          for (const prod of productEntries) {
+            const name = prod.group_by_value?.name || 'Nieznany'
+            const sales = prod.aggregate?.sales || {}
+            if (!itemMap[name]) {
+              itemMap[name] = { name, quantity: 0, revenue: 0, net_revenue: 0, transactions: 0, discount: 0 }
+            }
+            itemMap[name].quantity += sales.product_quantity || 0
+            itemMap[name].revenue += sales.total_money?.amount || 0
+            itemMap[name].net_revenue += sales.net_total_money?.amount || 0
+            itemMap[name].transactions += sales.transaction_count || 0
+            itemMap[name].discount += sales.discount_money?.amount || 0
           }
-        }).sort((a: any, b: any) => b.revenue - a.revenue)
+        }
 
-        // Summary from NONE level
-        const totalSales = noneLevel?.aggregate?.sales || {}
+        const items = Object.values(itemMap).sort((a, b) => b.revenue - a.revenue)
 
         return NextResponse.json({
           ok: true,
@@ -86,11 +106,11 @@ export async function GET(req: NextRequest) {
           data: {
             items,
             summary: {
-              total_revenue: totalSales.total_money?.amount || 0,
-              net_revenue: totalSales.net_total_money?.amount || 0,
-              total_quantity: totalSales.product_quantity || 0,
-              total_transactions: totalSales.transaction_count || 0,
-              total_discount: totalSales.discount_money?.amount || 0,
+              total_revenue: totalRevenue,
+              net_revenue: totalNetRevenue,
+              total_quantity: totalQty,
+              total_transactions: totalTx,
+              total_discount: totalDiscount,
             },
           },
         })
@@ -158,60 +178,6 @@ export async function GET(req: NextRequest) {
         requireOrg()
         const menus = await getMenus(orgId)
         return NextResponse.json({ ok: true, data: menus })
-      }
-
-      case 'date_test': {
-        // Temporary: test which date parameter format GoPOS accepts
-        requireOrg()
-        const today = getToday()
-        const tests: Record<string, any> = {}
-
-        // Test 1: closed_at with <bt>
-        try {
-          const r1 = await goposGet('/api/v3/reports/order_items', {
-            organization_id: orgId, groups: 'NONE',
-            closed_at: `<bt>${today}T00:00:00,${today}T23:59:59`,
-          })
-          tests['closed_at_bt'] = { ok: true, qty: r1?.reports?.[0]?.aggregate?.sales?.product_quantity }
-        } catch (e: any) { tests['closed_at_bt'] = { ok: false, error: e.message } }
-
-        // Test 2: date_range
-        try {
-          const r2 = await goposGet('/api/v3/reports/order_items', {
-            organization_id: orgId, groups: 'NONE',
-            date_range: `${today}T00:00:00,${today}T23:59:59`,
-          })
-          tests['date_range'] = { ok: true, qty: r2?.reports?.[0]?.aggregate?.sales?.product_quantity }
-        } catch (e: any) { tests['date_range'] = { ok: false, error: e.message } }
-
-        // Test 3: created_at with <bt>
-        try {
-          const r3 = await goposGet('/api/v3/reports/order_items', {
-            organization_id: orgId, groups: 'NONE',
-            created_at: `<bt>${today}T00:00:00,${today}T23:59:59`,
-          })
-          tests['created_at_bt'] = { ok: true, qty: r3?.reports?.[0]?.aggregate?.sales?.product_quantity }
-        } catch (e: any) { tests['created_at_bt'] = { ok: false, error: e.message } }
-
-        // Test 4: time_start + time_end with dates (original)
-        try {
-          const r4 = await goposGet('/api/v3/reports/order_items', {
-            organization_id: orgId, groups: 'NONE',
-            time_start: today, time_end: today,
-          })
-          tests['time_start_end'] = { ok: true, qty: r4?.reports?.[0]?.aggregate?.sales?.product_quantity }
-        } catch (e: any) { tests['time_start_end'] = { ok: false, error: e.message } }
-
-        // Test 5: date_range with just dates (no time)
-        try {
-          const r5 = await goposGet('/api/v3/reports/order_items', {
-            organization_id: orgId, groups: 'NONE',
-            date_range: `${today},${today}`,
-          })
-          tests['date_range_simple'] = { ok: true, qty: r5?.reports?.[0]?.aggregate?.sales?.product_quantity }
-        } catch (e: any) { tests['date_range_simple'] = { ok: false, error: e.message } }
-
-        return NextResponse.json({ ok: true, today, tests })
       }
 
       default:
