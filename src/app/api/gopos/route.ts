@@ -4,7 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
-  getOrders, getOrderItems, getOrderDetail, getAllOrderItems, getOrderItemsReportByTransaction,
+  getOrders,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -258,134 +258,9 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      case 'kompozycja_debug': {
-        // DEBUG: try 2 approaches to get per-order items
-        requireOrg()
-
-        // Approach 1: /org/order_items (all items at org level)
-        let allItems = null
-        try {
-          allItems = await getAllOrderItems(orgId)
-        } catch (e: any) {
-          allItems = { error: e.message }
-        }
-
-        // Approach 2: TRANSACTION grouping in reports
-        let txReport = null
-        try {
-          txReport = await getOrderItemsReportByTransaction(orgId)
-        } catch (e: any) {
-          txReport = { error: e.message }
-        }
-
-        // Summarize results
-        const allItemsPreview = allItems?.error
-          ? { error: allItems.error }
-          : {
-              type: typeof allItems,
-              isArray: Array.isArray(allItems),
-              hasData: !!allItems?.data,
-              keys: allItems ? Object.keys(allItems).slice(0, 10) : [],
-              sample: Array.isArray(allItems?.data)
-                ? allItems.data.slice(-2)
-                : Array.isArray(allItems)
-                  ? allItems.slice(-2)
-                  : null,
-              count: allItems?.data?.length || (Array.isArray(allItems) ? allItems.length : null),
-            }
-
-        const txReportPreview = txReport?.error
-          ? { error: txReport.error }
-          : {
-              hasReports: !!txReport?.reports,
-              topLevelEntries: txReport?.reports?.[0]?.sub_report?.length || 0,
-              sample: (txReport?.reports?.[0]?.sub_report || []).slice(-1),
-            }
-
-        return NextResponse.json({
-          ok: true,
-          approach1_all_order_items: allItemsPreview,
-          approach2_transaction_report: txReportPreview,
-        })
-      }
-
-      case 'kompozycja_orders': {
-        // Fetch individual orders that contain "Kompozycja Własna"
-        // Uses order_items endpoint per order (parallel, max 20)
-        requireOrg()
-        const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
-        const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
-
-        const allOrders = await getOrders(orgId, kStart, kEnd)
-        const orderList: any[] = allOrders?.data || allOrders || []
-
-        if (orderList.length === 0) {
-          return NextResponse.json({ ok: true, period: { start: kStart, end: kEnd }, total_orders: 0, kompozycja_count: 0, data: [] })
-        }
-
-        const compositions: {
-          order_id: number
-          created_at: string
-          items: { name: string; quantity: number; price: number }[]
-        }[] = []
-
-        // Parallel fetch, max 20 to stay under Vercel timeout
-        const maxOrders = Math.min(orderList.length, 20)
-        const batch = orderList.slice(-maxOrders)
-
-        const results = await Promise.all(
-          batch.map(async (ord: any) => {
-            const id = ord.id || ord.order_id
-            if (!id) return null
-            try {
-              const itemsRes = await getOrderItems(orgId, id)
-              // Handle both { data: [...] } and direct array
-              let items: any[] = []
-              if (Array.isArray(itemsRes)) items = itemsRes
-              else if (Array.isArray(itemsRes?.data)) items = itemsRes.data
-              else if (typeof itemsRes === 'object') items = Object.values(itemsRes).find(v => Array.isArray(v)) as any[] || []
-
-              // Find Kompozycja in any name field
-              const hasK = items.some((it: any) => {
-                const n = it.product_name || it.name || it.product?.name || JSON.stringify(it)
-                return n.includes('Kompozycja')
-              })
-              if (!hasK) return null
-
-              const kompItems = items
-                .filter((it: any) => {
-                  const n = it.product_name || it.name || it.product?.name || ''
-                  return n.includes('Kompozycja') || !(/^\d{2}\s/.test(n))
-                })
-                .map((it: any) => ({
-                  name: it.product_name || it.name || it.product?.name || 'Nieznany',
-                  quantity: it.quantity || 1,
-                  price: it.total_money?.amount || it.total_price?.amount || it.price?.amount || 0,
-                }))
-
-              return {
-                order_id: id,
-                created_at: ord.created_at || ord.closed_at || '',
-                items: kompItems,
-              }
-            } catch { return null }
-          })
-        )
-
-        for (const r of results) {
-          if (r) compositions.push(r)
-        }
-
-        compositions.sort((a, b) => b.order_id - a.order_id)
-
-        return NextResponse.json({
-          ok: true,
-          period: { start: kStart, end: kEnd },
-          total_orders: orderList.length,
-          kompozycja_count: compositions.length,
-          data: compositions,
-        })
-      }
+      // kompozycja_debug and kompozycja_orders removed — GoPOS API v3 doesn't expose
+      // per-order items (404 on order_items, no ORDER grouping in reports).
+      // Composition stats are now derived from sales_by_item (0-revenue items) client-side.
 
       case 'employees': {
         requireOrg()
@@ -439,7 +314,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           ok: false,
           error: `Unknown action: ${action}`,
-          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'kompozycja_debug', 'kompozycja_orders', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
+          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
         }, { status: 400 })
     }
   } catch (e: any) {

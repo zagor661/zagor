@@ -32,11 +32,12 @@ interface SalesItemData {
   sellingPrice: number
 }
 
-// Per-order Kompozycja breakdown
-interface KompozycjaOrder {
-  order_id: number
-  created_at: string
-  items: { name: string; quantity: number; price: number }[]
+// Kompozycja component stats (aggregated from sales_by_item 0-revenue items)
+interface KompozycjaComponent {
+  name: string
+  quantity: number
+  revenue: number       // 0 = free, >0 = paid add-on
+  perBox: number        // quantity / total kompozycja count
 }
 
 type SalesPeriod = 'today' | 'week' | 'month'
@@ -101,8 +102,8 @@ export default function FoodCostPage() {
   const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
   const [salesTotalQty, setSalesTotalQty] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
-  const [kompozycjaOrders, setKompozycjaOrders] = useState<KompozycjaOrder[]>([])
-  const [kompozycjaLoading, setKompozycjaLoading] = useState(false)
+  const [kompozycjaComponents, setKompozycjaComponents] = useState<KompozycjaComponent[]>([])
+  const [kompozycjaCount, setKompozycjaCount] = useState(0) // how many Kompozycja sold
   const [expandedSalesItem, setExpandedSalesItem] = useState<string | null>(null)
 
   // Search
@@ -138,6 +139,11 @@ export default function FoodCostPage() {
       // Parse report items (from NONE,PRODUCT grouping)
       const rawItems = json.data?.items || []
       const items: SalesItemData[] = []
+      const compMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
+      let kompCount = 0
+
+      // Known numbered dishes (keys from GOPOS_TO_FC)
+      const knownDishes = new Set(Object.keys(GOPOS_TO_FC))
 
       for (const ri of rawItems) {
         const goposName = ri.name || 'Nieznany'
@@ -146,14 +152,42 @@ export default function FoodCostPage() {
         const sellingPrice = qty > 0 ? revenue / qty : 0
         const fcName = GOPOS_TO_FC[goposName] || null
 
-        // Show items with revenue (skip 0-revenue composition components from aggregate)
+        // Track Kompozycja count
+        if (goposName.includes('Kompozycja')) {
+          kompCount += qty
+        }
+
         if (revenue > 0) {
+          // Items with revenue go to main sales list
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
+
+          // Paid add-ons (not a known dish) also count as composition components
+          if (!knownDishes.has(goposName) && !goposName.includes('Kompozycja')) {
+            compMap[goposName] = { name: goposName, quantity: qty, revenue }
+          }
+        } else if (qty > 0) {
+          // 0-revenue items = free composition components
+          compMap[goposName] = { name: goposName, quantity: qty, revenue: 0 }
         }
       }
 
+      // Build component stats with perBox ratio
+      const components: KompozycjaComponent[] = Object.values(compMap)
+        .map(c => ({
+          ...c,
+          perBox: kompCount > 0 ? Math.round((c.quantity / kompCount) * 10) / 10 : 0,
+        }))
+        .sort((a, b) => {
+          // Paid first, then by quantity
+          if (a.revenue > 0 && b.revenue === 0) return -1
+          if (a.revenue === 0 && b.revenue > 0) return 1
+          return b.quantity - a.quantity
+        })
+
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
+      setKompozycjaComponents(components)
+      setKompozycjaCount(kompCount)
       const paidRevenue = items.reduce((s, i) => s + i.revenue, 0)
       const paidQty = items.reduce((s, i) => s + i.quantity, 0)
       setSalesTotalRevenue(paidRevenue)
@@ -165,34 +199,13 @@ export default function FoodCostPage() {
     setSalesLoading(false)
   }, [])
 
-  // Fetch per-order Kompozycja breakdown (on-demand when user clicks)
-  const fetchKompozycjaOrders = useCallback(async (period: SalesPeriod) => {
-    setKompozycjaLoading(true)
-    try {
-      const { start, end } = getSalesPeriodRange(period)
-      const res = await fetch(`/api/gopos?action=kompozycja_orders&date_start=${start}&date_end=${end}`)
-      const json = await res.json()
-      if (json.ok && json.data) {
-        setKompozycjaOrders(json.data)
-      } else {
-        setKompozycjaOrders([])
-      }
-    } catch {
-      setKompozycjaOrders([])
-    }
-    setKompozycjaLoading(false)
-  }, [])
-
   // Auto-fetch when entering sales tab or changing period
   useEffect(() => {
-    if (tab === 'sales' && canAccess) fetchSales(salesPeriod)
+    if (tab === 'sales' && canAccess) {
+      setExpandedSalesItem(null)
+      fetchSales(salesPeriod)
+    }
   }, [tab, salesPeriod, canAccess, fetchSales])
-
-  // Reset kompozycja when period changes
-  useEffect(() => {
-    setExpandedSalesItem(null)
-    setKompozycjaOrders([])
-  }, [salesPeriod])
 
   function getSalesPeriodRange(p: SalesPeriod): { start: string; end: string } {
     const now = new Date()
@@ -423,13 +436,7 @@ export default function FoodCostPage() {
                           } ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}
                           onClick={() => {
                             if (isKompozycja) {
-                              if (isExpanded) {
-                                setExpandedSalesItem(null)
-                              } else {
-                                setExpandedSalesItem(item.goposName)
-                                // Fetch per-order data on first click
-                                if (kompozycjaOrders.length === 0) fetchKompozycjaOrders(salesPeriod)
-                              }
+                              setExpandedSalesItem(isExpanded ? null : item.goposName)
                             }
                           }}
                         >
@@ -483,79 +490,81 @@ export default function FoodCostPage() {
                           </div>
                         </div>
 
-                        {/* ── Kompozycja Własna drill-down (per order) ── */}
-                        {isKompozycja && isExpanded && (
+                        {/* ── Kompozycja Własna — popularność komponentów ── */}
+                        {isKompozycja && isExpanded && kompozycjaComponents.length > 0 && (
                           <div className="bg-purple-50 border border-purple-200 border-t-0 rounded-b-xl p-3 space-y-2">
-                            {kompozycjaLoading ? (
-                              <div className="flex items-center justify-center py-6">
-                                <div className="h-6 w-6 animate-spin rounded-full border-3 border-purple-200 border-t-purple-600" />
-                                <span className="ml-2 text-xs text-purple-400">Pobieram zamówienia...</span>
-                              </div>
-                            ) : kompozycjaOrders.length === 0 ? (
-                              <div className="text-center py-4">
-                                <p className="text-xs text-purple-400">Brak danych o zamówieniach</p>
-                                <p className="text-[10px] text-purple-300 mt-1">Spróbuj inny okres</p>
-                              </div>
-                            ) : (
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] text-purple-500 font-bold uppercase tracking-wider">
+                                🍜 Co wybierają klienci
+                              </span>
+                              <span className="text-[10px] text-purple-400">
+                                {kompozycjaCount} kompozycji sprzedanych
+                              </span>
+                            </div>
+
+                            {/* Paid add-ons */}
+                            {kompozycjaComponents.some(c => c.revenue > 0) && (
                               <>
-                                <div className="text-[10px] text-purple-500 font-bold uppercase tracking-wider">
-                                  🍜 Kompozycje klientów ({kompozycjaOrders.length})
-                                </div>
-
-                                {kompozycjaOrders.map((order, oi) => {
-                                  // Separate: Kompozycja header item vs components
-                                  const headerItem = order.items.find(it => it.name.includes('Kompozycja'))
-                                  const components = order.items.filter(it => !it.name.includes('Kompozycja'))
-
+                                <div className="text-[10px] text-purple-400 font-semibold">Płatne dodatki</div>
+                                {kompozycjaComponents.filter(c => c.revenue > 0).map((comp, ci) => {
+                                  const pct = kompozycjaCount > 0 ? Math.round((comp.quantity / kompozycjaCount) * 100) : 0
                                   return (
-                                    <div key={order.order_id} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                      {/* Order header */}
-                                      <div className="flex items-center justify-between px-3 py-2 bg-purple-100/50">
+                                    <div key={`p-${ci}`} className="bg-white rounded-lg px-3 py-2">
+                                      <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-purple-700">Box #{oi + 1}</span>
-                                          {order.created_at && (
-                                            <span className="text-[10px] text-purple-400">
-                                              {new Date(order.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                          )}
+                                          <span className="text-[10px]">💰</span>
+                                          <span className="text-xs text-gray-700 font-medium">{comp.name}</span>
                                         </div>
-                                        <span className="text-[10px] text-purple-300">#{order.order_id}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
+                                          <span className="text-xs font-bold text-purple-600">{comp.revenue} zł</span>
+                                        </div>
                                       </div>
-
-                                      {/* Components */}
-                                      <div className="px-3 py-2 space-y-1">
-                                        {components.length === 0 ? (
-                                          <p className="text-[10px] text-gray-400 italic">Brak składników</p>
-                                        ) : (
-                                          components.map((comp, ci) => (
-                                            <div key={ci} className="flex items-center justify-between">
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-[10px]">
-                                                  {comp.price > 0 ? '💰' : '🥬'}
-                                                </span>
-                                                <span className="text-xs text-gray-700">{comp.name}</span>
-                                                {comp.quantity > 1 && (
-                                                  <span className="text-[10px] text-gray-400">x{comp.quantity}</span>
-                                                )}
-                                              </div>
-                                              {comp.price > 0 ? (
-                                                <span className="text-[10px] font-bold text-purple-600">+{comp.price} zł</span>
-                                              ) : (
-                                                <span className="text-[10px] text-gray-300">w cenie</span>
-                                              )}
-                                            </div>
-                                          ))
-                                        )}
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <div className="flex-1 bg-purple-100 rounded-full h-1">
+                                          <div className="h-1 rounded-full bg-purple-400" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                        </div>
+                                        <span className="text-[10px] text-purple-400 w-8 text-right">{pct}%</span>
                                       </div>
                                     </div>
                                   )
                                 })}
-
-                                <div className="text-[10px] text-purple-300 text-center pt-2 border-t border-purple-100">
-                                  Dane z GoPOS · każdy box = 1 zamówienie
-                                </div>
                               </>
                             )}
+
+                            {/* Free components */}
+                            {kompozycjaComponents.some(c => c.revenue === 0) && (
+                              <>
+                                <div className="text-[10px] text-purple-400 font-semibold mt-1">Składniki w cenie</div>
+                                {kompozycjaComponents.filter(c => c.revenue === 0).map((comp, ci) => {
+                                  const pct = kompozycjaCount > 0 ? Math.round((comp.quantity / kompozycjaCount) * 100) : 0
+                                  return (
+                                    <div key={`f-${ci}`} className="bg-white rounded-lg px-3 py-2">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px]">🥬</span>
+                                          <span className="text-xs text-gray-700">{comp.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
+                                          <span className="text-[10px] text-gray-400">~{comp.perBox}/box</span>
+                                        </div>
+                                      </div>
+                                      <div className="mt-1 flex items-center gap-2">
+                                        <div className="flex-1 bg-gray-100 rounded-full h-1">
+                                          <div className="h-1 rounded-full bg-purple-300" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                        </div>
+                                        <span className="text-[10px] text-purple-300 w-8 text-right">{pct}%</span>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </>
+                            )}
+
+                            <div className="text-[10px] text-purple-300 text-center pt-2 border-t border-purple-100">
+                              % = ile kompozycji zawierało ten składnik · ~X/box = średnio na 1 kompozycję
+                            </div>
                           </div>
                         )}
                       </div>
