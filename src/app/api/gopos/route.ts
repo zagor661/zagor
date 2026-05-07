@@ -44,11 +44,57 @@ export async function GET(req: NextRequest) {
       }
 
       case 'sales': {
+        // Total sales aggregated by date (no product breakdown)
         requireOrg()
         const dateStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const dateEnd = req.nextUrl.searchParams.get('date_end') || getToday()
         const report = await getOrderItemsReport(orgId, dateStart, dateEnd)
-        return NextResponse.json({ ok: true, period: { start: dateStart, end: dateEnd }, data: report })
+
+        const reports: any[] = report?.reports || []
+        const noneLevel = reports[0]
+        const dateEntries: any[] = noneLevel?.sub_report || []
+
+        let totalRevenue = 0, totalNetRevenue = 0, totalQty = 0, totalTx = 0, totalDiscount = 0
+        const dailyBreakdown: { date: string; revenue: number; net_revenue: number; quantity: number; transactions: number }[] = []
+
+        for (const dateEntry of dateEntries) {
+          const tsRaw = dateEntry.group_by_value?.name
+          if (!tsRaw) continue
+          const dateStr = new Date(Number(tsRaw)).toISOString().split('T')[0]
+          if (dateStr < dateStart || dateStr > dateEnd) continue
+
+          const sales = dateEntry.aggregate?.sales || {}
+          const rev = sales.total_money?.amount || 0
+          const netRev = sales.net_total_money?.amount || 0
+          const qty = sales.product_quantity || 0
+          const tx = sales.transaction_count || 0
+          const disc = sales.discount_money?.amount || 0
+
+          totalRevenue += rev
+          totalNetRevenue += netRev
+          totalQty += qty
+          totalTx += tx
+          totalDiscount += disc
+
+          dailyBreakdown.push({ date: dateStr, revenue: rev, net_revenue: netRev, quantity: qty, transactions: tx })
+        }
+
+        dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date))
+
+        return NextResponse.json({
+          ok: true,
+          period: { start: dateStart, end: dateEnd },
+          data: {
+            daily: dailyBreakdown,
+            summary: {
+              total_revenue: totalRevenue,
+              net_revenue: totalNetRevenue,
+              total_quantity: totalQty,
+              total_transactions: totalTx,
+              total_discount: totalDiscount,
+            },
+          },
+        })
       }
 
       case 'sales_by_item': {
@@ -119,19 +165,96 @@ export async function GET(req: NextRequest) {
       }
 
       case 'orders': {
+        // Orders report with server-side date filtering
         requireOrg()
         const start = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const end = req.nextUrl.searchParams.get('date_end') || getToday()
-        const orders = await getOrdersReport(orgId, start, end)
-        return NextResponse.json({ ok: true, period: { start, end }, data: orders })
+        const ordersReport = await getOrdersReport(orgId, start, end)
+
+        const ordReports: any[] = ordersReport?.reports || []
+        const ordNone = ordReports[0]
+        const ordDateEntries: any[] = ordNone?.sub_report || []
+
+        let ordTotalRevenue = 0, ordTotalOrders = 0, ordAvgOrder = 0
+        const ordDaily: { date: string; revenue: number; orders: number; avg_order: number }[] = []
+
+        for (const dateEntry of ordDateEntries) {
+          const tsRaw = dateEntry.group_by_value?.name
+          if (!tsRaw) continue
+          const dateStr = new Date(Number(tsRaw)).toISOString().split('T')[0]
+          if (dateStr < start || dateStr > end) continue
+
+          const sales = dateEntry.aggregate?.sales || {}
+          const rev = sales.total_money?.amount || 0
+          const orders = sales.transaction_count || 0
+          const avg = orders > 0 ? rev / orders : 0
+
+          ordTotalRevenue += rev
+          ordTotalOrders += orders
+
+          ordDaily.push({ date: dateStr, revenue: rev, orders, avg_order: Math.round(avg * 100) / 100 })
+        }
+
+        ordAvgOrder = ordTotalOrders > 0 ? Math.round((ordTotalRevenue / ordTotalOrders) * 100) / 100 : 0
+        ordDaily.sort((a, b) => a.date.localeCompare(b.date))
+
+        return NextResponse.json({
+          ok: true,
+          period: { start, end },
+          data: {
+            daily: ordDaily,
+            summary: {
+              total_revenue: ordTotalRevenue,
+              total_orders: ordTotalOrders,
+              avg_order: ordAvgOrder,
+            },
+          },
+        })
       }
 
       case 'payments': {
+        // Payments report with server-side date filtering
         requireOrg()
         const pStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const pEnd = req.nextUrl.searchParams.get('date_end') || getToday()
         const payments = await getOrderPaymentsReport(orgId, pStart, pEnd)
-        return NextResponse.json({ ok: true, period: { start: pStart, end: pEnd }, data: payments })
+
+        const payReports: any[] = payments?.reports || []
+        const payNone = payReports[0]
+        const payDateEntries: any[] = payNone?.sub_report || []
+
+        let payTotalRevenue = 0, payTotalTx = 0
+        const payDaily: { date: string; revenue: number; transactions: number }[] = []
+
+        for (const dateEntry of payDateEntries) {
+          const tsRaw = dateEntry.group_by_value?.name
+          if (!tsRaw) continue
+          const dateStr = new Date(Number(tsRaw)).toISOString().split('T')[0]
+          if (dateStr < pStart || dateStr > pEnd) continue
+
+          const sales = dateEntry.aggregate?.sales || {}
+          const rev = sales.total_money?.amount || 0
+          const tx = sales.transaction_count || 0
+
+          payTotalRevenue += rev
+          payTotalTx += tx
+
+          payDaily.push({ date: dateStr, revenue: rev, transactions: tx })
+        }
+
+        payDaily.sort((a, b) => a.date.localeCompare(b.date))
+
+        return NextResponse.json({
+          ok: true,
+          period: { start: pStart, end: pEnd },
+          data: {
+            daily: payDaily,
+            summary: {
+              total_revenue: payTotalRevenue,
+              total_transactions: payTotalTx,
+            },
+          },
+        })
       }
 
       case 'employees': {

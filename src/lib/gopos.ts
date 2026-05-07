@@ -100,10 +100,11 @@ export async function getOrderItems(orgId: string, orderId: number) {
 }
 
 export async function getOrderItemsReport(orgId: string, dateStart: string, dateEnd: string) {
+  // GoPOS reports API doesn't support closed_at date filtering (returns 500)
+  // Use CREATED_AT_DATE grouping → server-side date filtering in route.ts
   return goposGet('/api/v3/reports/order_items', {
     organization_id: orgId,
-    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
-    groups: 'NONE',
+    groups: 'NONE,CREATED_AT_DATE',
   })
 }
 
@@ -115,9 +116,11 @@ export async function getOrderItemsReportByProduct(orgId: string, dateStart: str
 }
 
 export async function getOrdersReport(orgId: string, dateStart: string, dateEnd: string) {
+  // GoPOS reports API doesn't support closed_at date filtering (returns 500)
+  // Use CREATED_AT_DATE grouping → server-side date filtering in route.ts
   return goposGet('/api/v3/reports/orders', {
     organization_id: orgId,
-    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    groups: 'NONE,CREATED_AT_DATE',
   })
 }
 
@@ -142,9 +145,11 @@ export async function getPaymentMethods(orgId: string) {
 }
 
 export async function getOrderPaymentsReport(orgId: string, dateStart: string, dateEnd: string) {
+  // GoPOS reports API doesn't support closed_at date filtering (returns 500)
+  // Use CREATED_AT_DATE grouping → server-side date filtering in route.ts
   return goposGet('/api/v3/reports/order_payments', {
     organization_id: orgId,
-    closed_at: `<bt>${dateStart}T00:00:00,${dateEnd}T23:59:59`,
+    groups: 'NONE,CREATED_AT_DATE',
   })
 }
 
