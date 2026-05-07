@@ -258,26 +258,52 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      case 'kompozycja_orders': {
-        // Fetch individual orders that contain "Kompozycja Własna"
-        // Strategy: fetch order list, then use getOrderDetail (which includes items inline)
-        // Limited to avoid Vercel 10s timeout
+      case 'kompozycja_debug': {
+        // DEBUG: show raw structure of 1 order + its detail + its items
         requireOrg()
         const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
         const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
 
-        // 1. Fetch orders for date range
         const allOrders = await getOrders(orgId, kStart, kEnd)
         const orderList: any[] = allOrders?.data || allOrders || []
 
-        // 2. Check if order_items are already inline in the list response
-        // (some POS APIs include them). If first order has order_items/items, skip detail fetch.
-        const firstOrd = orderList[0]
-        const hasInlineItems = firstOrd && (
-          Array.isArray(firstOrd.order_items) ||
-          Array.isArray(firstOrd.items) ||
-          Array.isArray(firstOrd.line_items)
-        )
+        if (orderList.length === 0) {
+          return NextResponse.json({ ok: true, msg: 'no orders', total: 0 })
+        }
+
+        // Pick last order
+        const sampleOrd = orderList[orderList.length - 1]
+        const ordId = sampleOrd.id || sampleOrd.order_id
+
+        // Fetch detail
+        let detail = null
+        let detailItems = null
+        let separateItems = null
+        try { detail = await getOrderDetail(orgId, ordId) } catch (e: any) { detail = { error: e.message } }
+        try { separateItems = await getOrderItems(orgId, ordId) } catch (e: any) { separateItems = { error: e.message } }
+
+        return NextResponse.json({
+          ok: true,
+          total_orders: orderList.length,
+          sample_order_from_list: sampleOrd,
+          order_detail: detail,
+          order_items_separate: separateItems,
+        })
+      }
+
+      case 'kompozycja_orders': {
+        // Fetch individual orders that contain "Kompozycja Własna"
+        // Uses order_items endpoint per order (parallel, max 20)
+        requireOrg()
+        const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
+        const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
+
+        const allOrders = await getOrders(orgId, kStart, kEnd)
+        const orderList: any[] = allOrders?.data || allOrders || []
+
+        if (orderList.length === 0) {
+          return NextResponse.json({ ok: true, period: { start: kStart, end: kEnd }, total_orders: 0, kompozycja_count: 0, data: [] })
+        }
 
         const compositions: {
           order_id: number
@@ -285,74 +311,53 @@ export async function GET(req: NextRequest) {
           items: { name: string; quantity: number; price: number }[]
         }[] = []
 
-        function extractKompozycja(ord: any, items: any[]): typeof compositions[0] | null {
-          const hasK = items.some((it: any) => {
-            const n = it.product_name || it.name || it.product?.name || ''
-            return n.includes('Kompozycja')
-          })
-          if (!hasK) return null
+        // Parallel fetch, max 20 to stay under Vercel timeout
+        const maxOrders = Math.min(orderList.length, 20)
+        const batch = orderList.slice(-maxOrders)
 
-          const kompItems = items
-            .filter((it: any) => {
-              const n = it.product_name || it.name || it.product?.name || ''
-              // Include Kompozycja label + non-numbered-dish items (components)
-              return n.includes('Kompozycja') || !(/^\d{2}\s/.test(n))
-            })
-            .map((it: any) => ({
-              name: it.product_name || it.name || it.product?.name || 'Nieznany',
-              quantity: it.quantity || 1,
-              price: it.total_money?.amount || it.total_price?.amount || it.price?.amount || it.total_price || 0,
-            }))
+        const results = await Promise.all(
+          batch.map(async (ord: any) => {
+            const id = ord.id || ord.order_id
+            if (!id) return null
+            try {
+              const itemsRes = await getOrderItems(orgId, id)
+              // Handle both { data: [...] } and direct array
+              let items: any[] = []
+              if (Array.isArray(itemsRes)) items = itemsRes
+              else if (Array.isArray(itemsRes?.data)) items = itemsRes.data
+              else if (typeof itemsRes === 'object') items = Object.values(itemsRes).find(v => Array.isArray(v)) as any[] || []
 
-          return {
-            order_id: ord.id || ord.order_id,
-            created_at: ord.created_at || ord.closed_at || '',
-            items: kompItems,
-          }
-        }
+              // Find Kompozycja in any name field
+              const hasK = items.some((it: any) => {
+                const n = it.product_name || it.name || it.product?.name || JSON.stringify(it)
+                return n.includes('Kompozycja')
+              })
+              if (!hasK) return null
 
-        if (hasInlineItems) {
-          // Fast path: items already in the list response
-          for (const ord of orderList) {
-            const items: any[] = ord.order_items || ord.items || ord.line_items || []
-            const result = extractKompozycja(ord, items)
-            if (result) compositions.push(result)
-          }
-        } else {
-          // Slow path: need to fetch detail per order
-          // Use Promise.all in parallel, max 20 orders to stay under Vercel timeout
-          const maxOrders = Math.min(orderList.length, 20)
-          const batch = orderList.slice(-maxOrders) // most recent N
+              const kompItems = items
+                .filter((it: any) => {
+                  const n = it.product_name || it.name || it.product?.name || ''
+                  return n.includes('Kompozycja') || !(/^\d{2}\s/.test(n))
+                })
+                .map((it: any) => ({
+                  name: it.product_name || it.name || it.product?.name || 'Nieznany',
+                  quantity: it.quantity || 1,
+                  price: it.total_money?.amount || it.total_price?.amount || it.price?.amount || 0,
+                }))
 
-          const results = await Promise.all(
-            batch.map(async (ord: any) => {
-              const id = ord.id || ord.order_id
-              if (!id) return null
-              try {
-                // Try getOrderDetail first (may include items inline)
-                const detail = await getOrderDetail(orgId, id)
-                const detailItems: any[] = detail?.order_items || detail?.items || detail?.line_items || []
-
-                if (detailItems.length > 0) {
-                  return extractKompozycja(ord, detailItems)
-                }
-
-                // Fallback: fetch items separately
-                const itemsRes = await getOrderItems(orgId, id)
-                const items: any[] = itemsRes?.data || itemsRes || []
-                return extractKompozycja(ord, items)
-              } catch {
-                return null
+              return {
+                order_id: id,
+                created_at: ord.created_at || ord.closed_at || '',
+                items: kompItems,
               }
-            })
-          )
+            } catch { return null }
+          })
+        )
 
-          for (const r of results) {
-            if (r) compositions.push(r)
-          }
+        for (const r of results) {
+          if (r) compositions.push(r)
         }
 
-        // Sort by newest first
         compositions.sort((a, b) => b.order_id - a.order_id)
 
         return NextResponse.json({
@@ -361,7 +366,6 @@ export async function GET(req: NextRequest) {
           total_orders: orderList.length,
           kompozycja_count: compositions.length,
           data: compositions,
-          _debug: { hasInlineItems, firstOrderKeys: firstOrd ? Object.keys(firstOrd).slice(0, 15) : [] },
         })
       }
 
