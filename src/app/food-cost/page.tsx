@@ -140,15 +140,19 @@ export default function FoodCostPage() {
         const sellingPrice = qty > 0 ? revenue / qty : 0
         const fcName = GOPOS_TO_FC[goposName] || null
 
-        if (qty > 0) {
+        // Only show items with actual revenue (skip components/bases with 0 zł)
+        if (revenue > 0) {
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
         }
       }
 
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
-      setSalesTotalRevenue(summary.total_revenue || items.reduce((s, i) => s + i.revenue, 0))
-      setSalesTotalQty(summary.total_quantity || items.reduce((s, i) => s + i.quantity, 0))
+      // Use summary from server for totals (includes all items)
+      const paidRevenue = items.reduce((s, i) => s + i.revenue, 0)
+      const paidQty = items.reduce((s, i) => s + i.quantity, 0)
+      setSalesTotalRevenue(paidRevenue)
+      setSalesTotalQty(paidQty)
     } catch {
       setSalesItems([])
     }
