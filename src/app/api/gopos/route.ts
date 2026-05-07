@@ -56,18 +56,30 @@ export async function GET(req: NextRequest) {
         requireOrg()
         const siStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const siEnd = req.nextUrl.searchParams.get('date_end') || getToday()
+        const debug = req.nextUrl.searchParams.get('debug') === '1'
         const rawOrders = await getOrders(orgId, siStart, siEnd)
         const orderList = rawOrders?.data || []
+
+        // Debug: return raw first order structure
+        if (debug && orderList.length > 0) {
+          return NextResponse.json({
+            ok: true,
+            debug: true,
+            sample_keys: Object.keys(orderList[0]),
+            sample_order: orderList[0],
+            total_orders: orderList.length,
+          })
+        }
 
         // Aggregate items from all orders
         const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
 
         for (const order of orderList) {
-          const items = order.order_items || order.items || []
+          const items = order.order_items || order.items || order.line_items || []
           for (const item of items) {
-            const name = item.item_name || item.name || 'Nieznany'
-            const qty = item.quantity || 1
-            const price = item.total_price?.amount || item.price?.amount || 0
+            const name = item.item_name || item.name || item.product_name || 'Nieznany'
+            const qty = item.quantity || item.count || 1
+            const price = item.total_price?.amount || item.price?.amount || item.total || 0
 
             if (!itemMap[name]) {
               itemMap[name] = { name, quantity: 0, revenue: 0 }
