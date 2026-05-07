@@ -4,7 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
-  getOrders, getOrderItems,
+  getOrders, getOrderItems, getOrderDetail,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -259,7 +259,7 @@ export async function GET(req: NextRequest) {
       }
 
       case 'kompozycja_debug': {
-        // DEBUG: show raw structure of 1 order + its detail + its items
+        // DEBUG: show raw structure of 1 order detail (includes items?)
         requireOrg()
         const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
         const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
@@ -275,19 +275,16 @@ export async function GET(req: NextRequest) {
         const sampleOrd = orderList[orderList.length - 1]
         const ordId = sampleOrd.id || sampleOrd.order_id
 
-        // Fetch detail
+        // Fetch full detail via /orders/{id}
         let detail = null
-        let detailItems = null
-        let separateItems = null
         try { detail = await getOrderDetail(orgId, ordId) } catch (e: any) { detail = { error: e.message } }
-        try { separateItems = await getOrderItems(orgId, ordId) } catch (e: any) { separateItems = { error: e.message } }
 
         return NextResponse.json({
           ok: true,
           total_orders: orderList.length,
-          sample_order_from_list: sampleOrd,
-          order_detail: detail,
-          order_items_separate: separateItems,
+          list_order_keys: Object.keys(sampleOrd),
+          detail_keys: detail && !detail.error ? Object.keys(detail) : null,
+          detail_full: detail,
         })
       }
 
