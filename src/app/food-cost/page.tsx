@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole, normalizeRole } from '@/lib/roles'
@@ -85,7 +85,6 @@ export default function FoodCostPage() {
   const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
   const [salesTotalQty, setSalesTotalQty] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
-  const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Search
   const [searchIng, setSearchIng] = useState('')
@@ -104,16 +103,16 @@ export default function FoodCostPage() {
   const [selectedRecipe, setSelectedRecipe] = useState<string | null>(null)
 
   // ─── Fetch sales from GoPOS ────────────────────────────
-  const fetchSales = useCallback(async (period: SalesPeriod, silent = false) => {
-    if (!silent) setSalesLoading(true)
+  const fetchSales = useCallback(async (period: SalesPeriod) => {
+    setSalesLoading(true)
     try {
       const { start, end } = getSalesPeriodRange(period)
       const res = await fetch(`/api/gopos?action=sales_by_item&date_start=${start}&date_end=${end}`)
       const json = await res.json()
 
       if (!json.ok) {
-        if (!silent) setSalesItems([])
-        if (!silent) setSalesLoading(false)
+        setSalesItems([])
+        setSalesLoading(false)
         return
       }
 
@@ -142,29 +141,14 @@ export default function FoodCostPage() {
       setSalesTotalQty(paidQty)
       setLastRefresh(new Date())
     } catch {
-      if (!silent) setSalesItems([])
+      setSalesItems([])
     }
-    if (!silent) setSalesLoading(false)
+    setSalesLoading(false)
   }, [])
 
-  // Initial fetch + auto-refresh every 60s
+  // Auto-fetch when entering sales tab or changing period
   useEffect(() => {
-    if (tab === 'sales' && canAccess) {
-      fetchSales(salesPeriod)
-
-      // Auto-refresh co 60s (silent — bez loading spinner)
-      refreshTimer.current = setInterval(() => {
-        fetchSales(salesPeriod, true)
-      }, 60_000)
-
-      return () => {
-        if (refreshTimer.current) clearInterval(refreshTimer.current)
-      }
-    }
-    // Cleanup when leaving sales tab
-    return () => {
-      if (refreshTimer.current) clearInterval(refreshTimer.current)
-    }
+    if (tab === 'sales' && canAccess) fetchSales(salesPeriod)
   }, [tab, salesPeriod, canAccess, fetchSales])
 
   function getSalesPeriodRange(p: SalesPeriod): { start: string; end: string } {
@@ -332,17 +316,20 @@ export default function FoodCostPage() {
               ))}
             </div>
 
-            {/* Auto-refresh indicator */}
+            {/* Refresh indicator — tap to reload */}
             {lastRefresh && !salesLoading && (
-              <div className="flex items-center justify-between px-1 mb-2">
+              <button
+                onClick={() => fetchSales(salesPeriod)}
+                className="w-full flex items-center justify-between px-1 mb-2 active:opacity-50 transition-opacity"
+              >
                 <span className="text-[10px] text-gray-400">
-                  <span className="inline-block w-1.5 h-1.5 bg-green-400 rounded-full mr-1 animate-pulse" />
-                  Live — auto-refresh co 60s
+                  <span className="inline-block w-1.5 h-1.5 bg-green-400 rounded-full mr-1" />
+                  Zaladowano · kliknij aby odswiezyc
                 </span>
                 <span className="text-[10px] text-gray-300">
                   {lastRefresh.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-              </div>
+              </button>
             )}
 
             {salesLoading ? (
