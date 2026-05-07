@@ -4,6 +4,7 @@ import {
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
+  getOrders, getOrderItems,
 } from '@/lib/gopos'
 
 // GET /api/gopos?action=me|org|items|categories|sales|orders|payments|employees|work_times|payment_methods|pos_reports|invoices|taxes|discounts|menus
@@ -255,6 +256,27 @@ export async function GET(req: NextRequest) {
             },
           },
         })
+      }
+
+      case 'order_debug': {
+        // Temporary: fetch recent orders and their items to see Kompozycja structure
+        requireOrg()
+        const allOrders = await getOrders(orgId)
+        const orderList: any[] = allOrders?.data || allOrders || []
+        // Get last 5 orders with their items
+        const recent = orderList.slice(-5)
+        const detailed = []
+        for (const ord of recent) {
+          const id = ord.id || ord.order_id
+          if (!id) continue
+          try {
+            const items = await getOrderItems(orgId, id)
+            detailed.push({ order_id: id, status: ord.status, items })
+          } catch (e: any) {
+            detailed.push({ order_id: id, error: e.message })
+          }
+        }
+        return NextResponse.json({ ok: true, total_orders: orderList.length, sample: detailed })
       }
 
       case 'employees': {
