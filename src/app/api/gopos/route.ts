@@ -258,25 +258,82 @@ export async function GET(req: NextRequest) {
         })
       }
 
-      case 'order_debug': {
-        // Temporary: fetch recent orders and their items to see Kompozycja structure
+      case 'kompozycja_orders': {
+        // Fetch individual orders that contain "Kompozycja Własna"
+        // Returns per-order breakdown so we can see what each customer composed
         requireOrg()
-        const allOrders = await getOrders(orgId)
+        const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
+        const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
+
+        // 1. Fetch orders for date range
+        const allOrders = await getOrders(orgId, kStart, kEnd)
         const orderList: any[] = allOrders?.data || allOrders || []
-        // Get last 5 orders with their items
-        const recent = orderList.slice(-5)
-        const detailed = []
-        for (const ord of recent) {
-          const id = ord.id || ord.order_id
-          if (!id) continue
-          try {
-            const items = await getOrderItems(orgId, id)
-            detailed.push({ order_id: id, status: ord.status, items })
-          } catch (e: any) {
-            detailed.push({ order_id: id, error: e.message })
+
+        // 2. Fetch items for each order (parallel batches of 10 to avoid rate limits)
+        const compositions: {
+          order_id: number
+          created_at: string
+          items: { name: string; quantity: number; price: number }[]
+        }[] = []
+
+        // Process in batches of 10
+        for (let i = 0; i < orderList.length; i += 10) {
+          const batch = orderList.slice(i, i + 10)
+          const results = await Promise.all(
+            batch.map(async (ord: any) => {
+              const id = ord.id || ord.order_id
+              if (!id) return null
+              try {
+                const itemsRes = await getOrderItems(orgId, id)
+                const items: any[] = itemsRes?.data || itemsRes || []
+
+                // Check if this order has Kompozycja Własna
+                const hasKompozycja = items.some((it: any) => {
+                  const name = it.product_name || it.name || ''
+                  return name.includes('Kompozycja')
+                })
+
+                if (!hasKompozycja) return null
+
+                // Extract all items from this order that belong to the kompozycja
+                // (filter out standard numbered dishes like "01 TOKYO")
+                const kompozycjaItems = items
+                  .filter((it: any) => {
+                    const name = it.product_name || it.name || ''
+                    // Include: Kompozycja Własna itself + all components (non-numbered dishes)
+                    return name.includes('Kompozycja') || !(/^\d{2}\s/.test(name))
+                  })
+                  .map((it: any) => ({
+                    name: it.product_name || it.name || 'Nieznany',
+                    quantity: it.quantity || 1,
+                    price: it.total_money?.amount || it.price?.amount || it.total_price || 0,
+                  }))
+
+                return {
+                  order_id: id,
+                  created_at: ord.created_at || ord.closed_at || '',
+                  items: kompozycjaItems,
+                }
+              } catch {
+                return null
+              }
+            })
+          )
+          for (const r of results) {
+            if (r) compositions.push(r)
           }
         }
-        return NextResponse.json({ ok: true, total_orders: orderList.length, sample: detailed })
+
+        // Sort by newest first
+        compositions.sort((a, b) => b.order_id - a.order_id)
+
+        return NextResponse.json({
+          ok: true,
+          period: { start: kStart, end: kEnd },
+          total_orders: orderList.length,
+          kompozycja_count: compositions.length,
+          data: compositions,
+        })
       }
 
       case 'employees': {
@@ -331,7 +388,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           ok: false,
           error: `Unknown action: ${action}`,
-          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
+          available: ['me', 'org', 'items', 'categories', 'sales', 'sales_by_item', 'kompozycja_orders', 'orders', 'payments', 'employees', 'work_times', 'payment_methods', 'pos_reports', 'invoices', 'taxes', 'discounts', 'menus'],
         }, { status: 400 })
     }
   } catch (e: any) {

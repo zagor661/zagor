@@ -32,11 +32,11 @@ interface SalesItemData {
   sellingPrice: number
 }
 
-// Kompozycja Własna component (free base/noodle/sauce or paid add-on)
-interface CompositionComponent {
-  name: string
-  quantity: number
-  revenue: number   // 0 = free component, >0 = paid add-on
+// Per-order Kompozycja breakdown
+interface KompozycjaOrder {
+  order_id: number
+  created_at: string
+  items: { name: string; quantity: number; price: number }[]
 }
 
 type SalesPeriod = 'today' | 'week' | 'month'
@@ -101,7 +101,8 @@ export default function FoodCostPage() {
   const [salesTotalRevenue, setSalesTotalRevenue] = useState(0)
   const [salesTotalQty, setSalesTotalQty] = useState(0)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
-  const [compositionComponents, setCompositionComponents] = useState<CompositionComponent[]>([])
+  const [kompozycjaOrders, setKompozycjaOrders] = useState<KompozycjaOrder[]>([])
+  const [kompozycjaLoading, setKompozycjaLoading] = useState(false)
   const [expandedSalesItem, setExpandedSalesItem] = useState<string | null>(null)
 
   // Search
@@ -137,10 +138,6 @@ export default function FoodCostPage() {
       // Parse report items (from NONE,PRODUCT grouping)
       const rawItems = json.data?.items || []
       const items: SalesItemData[] = []
-      const components: CompositionComponent[] = []
-
-      // Known dish names (from GOPOS_TO_FC keys) — everything else with revenue=0 is a composition component
-      const knownDishes = new Set(Object.keys(GOPOS_TO_FC))
 
       for (const ri of rawItems) {
         const goposName = ri.name || 'Nieznany'
@@ -149,30 +146,14 @@ export default function FoodCostPage() {
         const sellingPrice = qty > 0 ? revenue / qty : 0
         const fcName = GOPOS_TO_FC[goposName] || null
 
-        if (revenue > 0 && (knownDishes.has(goposName) || fcName)) {
-          // Known dish with revenue → main sales list
+        // Show items with revenue (skip 0-revenue composition components from aggregate)
+        if (revenue > 0) {
           items.push({ goposName, fcName, quantity: qty, revenue, sellingPrice })
-        } else if (revenue > 0 && !knownDishes.has(goposName)) {
-          // Paid item NOT in dish list → paid add-on (Rostbef, Udko, etc.)
-          // Show in main list AND as composition component
-          items.push({ goposName, fcName: null, quantity: qty, revenue, sellingPrice })
-          components.push({ name: goposName, quantity: qty, revenue })
-        } else if (revenue === 0 && qty > 0) {
-          // Free component (base, noodle, sauce, topping)
-          components.push({ name: goposName, quantity: qty, revenue: 0 })
         }
       }
 
-      // Sort components: paid add-ons first, then by quantity
-      components.sort((a, b) => {
-        if (a.revenue > 0 && b.revenue === 0) return -1
-        if (a.revenue === 0 && b.revenue > 0) return 1
-        return b.quantity - a.quantity
-      })
-
       items.sort((a, b) => b.revenue - a.revenue)
       setSalesItems(items)
-      setCompositionComponents(components)
       const paidRevenue = items.reduce((s, i) => s + i.revenue, 0)
       const paidQty = items.reduce((s, i) => s + i.quantity, 0)
       setSalesTotalRevenue(paidRevenue)
@@ -184,10 +165,34 @@ export default function FoodCostPage() {
     setSalesLoading(false)
   }, [])
 
+  // Fetch per-order Kompozycja breakdown (on-demand when user clicks)
+  const fetchKompozycjaOrders = useCallback(async (period: SalesPeriod) => {
+    setKompozycjaLoading(true)
+    try {
+      const { start, end } = getSalesPeriodRange(period)
+      const res = await fetch(`/api/gopos?action=kompozycja_orders&date_start=${start}&date_end=${end}`)
+      const json = await res.json()
+      if (json.ok && json.data) {
+        setKompozycjaOrders(json.data)
+      } else {
+        setKompozycjaOrders([])
+      }
+    } catch {
+      setKompozycjaOrders([])
+    }
+    setKompozycjaLoading(false)
+  }, [])
+
   // Auto-fetch when entering sales tab or changing period
   useEffect(() => {
     if (tab === 'sales' && canAccess) fetchSales(salesPeriod)
   }, [tab, salesPeriod, canAccess, fetchSales])
+
+  // Reset kompozycja when period changes
+  useEffect(() => {
+    setExpandedSalesItem(null)
+    setKompozycjaOrders([])
+  }, [salesPeriod])
 
   function getSalesPeriodRange(p: SalesPeriod): { start: string; end: string } {
     const now = new Date()
@@ -417,7 +422,15 @@ export default function FoodCostPage() {
                             isKompozycja ? 'border-purple-200 cursor-pointer active:bg-purple-50' : 'border-gray-100'
                           } ${isExpanded ? 'rounded-b-none border-b-0' : ''}`}
                           onClick={() => {
-                            if (isKompozycja) setExpandedSalesItem(isExpanded ? null : item.goposName)
+                            if (isKompozycja) {
+                              if (isExpanded) {
+                                setExpandedSalesItem(null)
+                              } else {
+                                setExpandedSalesItem(item.goposName)
+                                // Fetch per-order data on first click
+                                if (kompozycjaOrders.length === 0) fetchKompozycjaOrders(salesPeriod)
+                              }
+                            }
                           }}
                         >
                           <div className="flex items-center gap-3">
@@ -470,56 +483,79 @@ export default function FoodCostPage() {
                           </div>
                         </div>
 
-                        {/* ── Kompozycja Własna drill-down ── */}
-                        {isKompozycja && isExpanded && compositionComponents.length > 0 && (
-                          <div className="bg-purple-50 border border-purple-200 border-t-0 rounded-b-xl p-3 space-y-1.5">
-                            <div className="text-[10px] text-purple-500 font-bold uppercase tracking-wider mb-2">
-                              🍜 Co komponowali klienci ({compositionComponents.length})
-                            </div>
-
-                            {/* Paid add-ons section */}
-                            {compositionComponents.some(c => c.revenue > 0) && (
+                        {/* ── Kompozycja Własna drill-down (per order) ── */}
+                        {isKompozycja && isExpanded && (
+                          <div className="bg-purple-50 border border-purple-200 border-t-0 rounded-b-xl p-3 space-y-2">
+                            {kompozycjaLoading ? (
+                              <div className="flex items-center justify-center py-6">
+                                <div className="h-6 w-6 animate-spin rounded-full border-3 border-purple-200 border-t-purple-600" />
+                                <span className="ml-2 text-xs text-purple-400">Pobieram zamówienia...</span>
+                              </div>
+                            ) : kompozycjaOrders.length === 0 ? (
+                              <div className="text-center py-4">
+                                <p className="text-xs text-purple-400">Brak danych o zamówieniach</p>
+                                <p className="text-[10px] text-purple-300 mt-1">Spróbuj inny okres</p>
+                              </div>
+                            ) : (
                               <>
-                                <div className="text-[10px] text-purple-400 font-semibold mt-1 mb-1">Płatne dodatki</div>
-                                {compositionComponents.filter(c => c.revenue > 0).map((comp, ci) => (
-                                  <div key={`paid-${ci}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-purple-300">💰</span>
-                                      <span className="text-xs text-gray-700 font-medium">{comp.name}</span>
+                                <div className="text-[10px] text-purple-500 font-bold uppercase tracking-wider">
+                                  🍜 Kompozycje klientów ({kompozycjaOrders.length})
+                                </div>
+
+                                {kompozycjaOrders.map((order, oi) => {
+                                  // Separate: Kompozycja header item vs components
+                                  const headerItem = order.items.find(it => it.name.includes('Kompozycja'))
+                                  const components = order.items.filter(it => !it.name.includes('Kompozycja'))
+
+                                  return (
+                                    <div key={order.order_id} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                      {/* Order header */}
+                                      <div className="flex items-center justify-between px-3 py-2 bg-purple-100/50">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-bold text-purple-700">Box #{oi + 1}</span>
+                                          {order.created_at && (
+                                            <span className="text-[10px] text-purple-400">
+                                              {new Date(order.created_at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] text-purple-300">#{order.order_id}</span>
+                                      </div>
+
+                                      {/* Components */}
+                                      <div className="px-3 py-2 space-y-1">
+                                        {components.length === 0 ? (
+                                          <p className="text-[10px] text-gray-400 italic">Brak składników</p>
+                                        ) : (
+                                          components.map((comp, ci) => (
+                                            <div key={ci} className="flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-[10px]">
+                                                  {comp.price > 0 ? '💰' : '🥬'}
+                                                </span>
+                                                <span className="text-xs text-gray-700">{comp.name}</span>
+                                                {comp.quantity > 1 && (
+                                                  <span className="text-[10px] text-gray-400">x{comp.quantity}</span>
+                                                )}
+                                              </div>
+                                              {comp.price > 0 ? (
+                                                <span className="text-[10px] font-bold text-purple-600">+{comp.price} zł</span>
+                                              ) : (
+                                                <span className="text-[10px] text-gray-300">w cenie</span>
+                                              )}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-[10px] text-gray-400">{comp.quantity}x</span>
-                                      <span className="text-xs font-bold text-purple-600">
-                                        {comp.revenue.toFixed(0)} zł
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
+
+                                <div className="text-[10px] text-purple-300 text-center pt-2 border-t border-purple-100">
+                                  Dane z GoPOS · każdy box = 1 zamówienie
+                                </div>
                               </>
                             )}
-
-                            {/* Free components section */}
-                            {compositionComponents.some(c => c.revenue === 0) && (
-                              <>
-                                <div className="text-[10px] text-purple-400 font-semibold mt-2 mb-1">Bazy / Makarony / Sosy / Toppings</div>
-                                {compositionComponents.filter(c => c.revenue === 0).map((comp, ci) => (
-                                  <div key={`free-${ci}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[10px] text-gray-300">🥬</span>
-                                      <span className="text-xs text-gray-700">{comp.name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      <span className="text-[10px] text-gray-500 font-bold">{comp.quantity}x</span>
-                                      <span className="text-[10px] text-gray-300">gratis</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </>
-                            )}
-
-                            <div className="text-[10px] text-purple-300 text-center mt-2 pt-2 border-t border-purple-100">
-                              Dane z GoPOS · okres: {salesPeriod === 'today' ? 'dzisiaj' : salesPeriod === 'week' ? '7 dni' : 'miesiąc'}
-                            </div>
                           </div>
                         )}
                       </div>
