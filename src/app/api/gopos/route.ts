@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  getMe, getOrganization, getItems, getCategories,
+  getMe, getOrganization, getItems, getCategories, getOrders,
   getOrderItemsReport, getOrderItemsReportByItem, getOrdersReport, getOrderPaymentsReport,
   getEmployees, getWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
@@ -52,11 +52,37 @@ export async function GET(req: NextRequest) {
       }
 
       case 'sales_by_item': {
+        // Fetch raw orders and aggregate per item server-side
         requireOrg()
         const siStart = req.nextUrl.searchParams.get('date_start') || getDefaultDateStart()
         const siEnd = req.nextUrl.searchParams.get('date_end') || getToday()
-        const itemReport = await getOrderItemsReportByItem(orgId, siStart, siEnd)
-        return NextResponse.json({ ok: true, period: { start: siStart, end: siEnd }, data: itemReport })
+        const rawOrders = await getOrders(orgId, siStart, siEnd)
+        const orderList = rawOrders?.data || []
+
+        // Aggregate items from all orders
+        const itemMap: Record<string, { name: string; quantity: number; revenue: number }> = {}
+
+        for (const order of orderList) {
+          const items = order.order_items || order.items || []
+          for (const item of items) {
+            const name = item.item_name || item.name || 'Nieznany'
+            const qty = item.quantity || 1
+            const price = item.total_price?.amount || item.price?.amount || 0
+
+            if (!itemMap[name]) {
+              itemMap[name] = { name, quantity: 0, revenue: 0 }
+            }
+            itemMap[name].quantity += qty
+            itemMap[name].revenue += price
+          }
+        }
+
+        const items = Object.values(itemMap).sort((a, b) => b.revenue - a.revenue)
+        return NextResponse.json({
+          ok: true,
+          period: { start: siStart, end: siEnd },
+          data: { items, total_orders: orderList.length },
+        })
       }
 
       case 'orders': {

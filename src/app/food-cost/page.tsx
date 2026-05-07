@@ -128,17 +128,16 @@ export default function FoodCostPage() {
         return
       }
 
-      // Parse sub_report from GoPOS ITEM-grouped response
-      const reports = json.data?.reports || []
-      const subReports = reports[0]?.sub_report || []
+      // Parse server-aggregated items
+      const rawItems = json.data?.items || []
       const items: SalesItemData[] = []
       let totalRev = 0
       let totalQty = 0
 
-      for (const sr of subReports) {
-        const goposName = sr.name || sr.item_name || 'Nieznany'
-        const qty = sr.aggregate?.sales?.product_quantity || 0
-        const revenue = sr.aggregate?.sales?.total_money?.amount || 0
+      for (const ri of rawItems) {
+        const goposName = ri.name || 'Nieznany'
+        const qty = ri.quantity || 0
+        const revenue = ri.revenue || 0
         const sellingPrice = qty > 0 ? revenue / qty : 0
         const fcName = GOPOS_TO_FC[goposName] || null
 
