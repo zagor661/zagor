@@ -577,12 +577,12 @@ export default function TasksPage() {
           </div>
         )}
 
-        {/* Chat modal */}
+        {/* Chat modal — positioned top to avoid mobile keyboard overlap */}
         {openChatId && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: '70vh' }}>
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-8 px-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style={{ maxHeight: 'min(60vh, 400px)' }}>
               {/* Header */}
-              <div className="p-4 border-b flex items-center justify-between">
+              <div className="p-4 border-b flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">💬 Chat</h3>
                   <p className="text-xs text-gray-400 truncate">
@@ -593,7 +593,7 @@ export default function TasksPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[120px]">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[80px]">
                 {chatMessages.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-4">Brak wiadomości — napisz pierwszą</p>
                 ) : (
@@ -618,11 +618,12 @@ export default function TasksPage() {
               </div>
 
               {/* Input */}
-              <div className="p-3 border-t flex gap-2">
+              <div className="p-3 border-t flex gap-2 shrink-0">
                 <input
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                  onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
                   placeholder="Napisz wiadomość..."
                   className="input flex-1 text-sm"
                   autoFocus
