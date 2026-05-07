@@ -5,7 +5,7 @@ import BottomNav from '@/components/BottomNav'
 
 export const metadata: Metadata = {
   title: 'KitchenOps',
-  description: 'System operacyjny restauracji WOKI WOKI',
+  description: 'System operacyjny Twojej restauracji',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

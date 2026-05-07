@@ -1,5 +1,5 @@
 // KitchenOps Service Worker — PWA + Push Notifications
-const CACHE_NAME = 'kitchenops-v1'
+const CACHE_NAME = 'kitchenops-v2'
 
 // Install — cache shell
 self.addEventListener('install', (event) => {
@@ -8,6 +8,7 @@ self.addEventListener('install', (event) => {
       return cache.addAll([
         '/',
         '/login',
+        '/restaurant',
         '/manifest.json',
       ])
     })

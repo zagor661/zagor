@@ -199,7 +199,7 @@ export default function SetupWizard() {
                 <input
                   value={locName}
                   onChange={e => setLocName(e.target.value)}
-                  placeholder="np. WOKI WOKI"
+                  placeholder="np. Moja Restauracja"
                   className="input"
                   autoFocus
                 />

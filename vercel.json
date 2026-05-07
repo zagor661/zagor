@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/notifications",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/schedule-generate",
+      "schedule": "0 8 24-31 * *"
     }
   ]
 }

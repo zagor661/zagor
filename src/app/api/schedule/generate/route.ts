@@ -80,12 +80,22 @@ export async function POST(req: NextRequest) {
     const defaultStart = settings?.worker_start || '11:30'
     const defaultEnd = settings?.worker_end || '20:30'
 
-    // ── 2. Load workers ──
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name, role')
+    // ── 2. Load workers (via user_locations join table) ──
+    const { data: locLinks } = await supabase
+      .from('user_locations')
+      .select('user_id')
       .eq('location_id', locationId)
-      .eq('is_active', true)
+
+    const workerIds = (locLinks || []).map(l => l.user_id)
+
+    const { data: profiles } = workerIds.length > 0
+      ? await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('id', workerIds)
+          .eq('is_active', true)
+          .in('role', ['kitchen', 'hall', 'bar'])
+      : { data: [] }
 
     if (!profiles || profiles.length === 0) {
       return NextResponse.json({ error: 'Brak aktywnych pracownikow' }, { status: 400 })

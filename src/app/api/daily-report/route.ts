@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Missing Supabase config')
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    const locationId = searchParams.get('location_id')
+    if (!locationId) {
+      return NextResponse.json({ ok: false, error: 'Missing location_id' }, { status: 400 })
+    }
     const nextDate = (() => {
       const d = new Date(date)
       d.setDate(d.getDate() + 1)
@@ -24,6 +28,7 @@ export async function GET(req: NextRequest) {
       const { data } = await getSupabase()
         .from('checklist_logs')
         .select('is_done')
+        .eq('location_id', locationId)
         .gte('created_at', date)
         .lt('created_at', nextDate)
       if (data) {
@@ -38,6 +43,7 @@ export async function GET(req: NextRequest) {
       const { count: created } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .gte('created_at', date)
         .lt('created_at', nextDate)
       tasksCreated = created || 0
@@ -45,6 +51,7 @@ export async function GET(req: NextRequest) {
       const { count: completed } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .eq('is_completed', true)
         .gte('updated_at', date)
         .lt('updated_at', nextDate)
@@ -53,6 +60,7 @@ export async function GET(req: NextRequest) {
       const { count: open } = await getSupabase()
         .from('worker_tasks')
         .select('*', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .eq('is_completed', false)
       tasksOpen = open || 0
     } catch {}
@@ -63,6 +71,7 @@ export async function GET(req: NextRequest) {
       const { data: clockData } = await getSupabase()
         .from('clock_logs')
         .select('worker_id, clock_in, clock_out, hours_worked, total_break_minutes')
+        .eq('location_id', locationId)
         .eq('clock_date', date)
 
       if (clockData && clockData.length > 0) {
@@ -89,6 +98,7 @@ export async function GET(req: NextRequest) {
       const { data } = await getSupabase()
         .from('issues')
         .select('title, status')
+        .eq('location_id', locationId)
         .gte('created_at', date)
         .lt('created_at', nextDate)
       if (data) issues.push(...data)
@@ -100,6 +110,7 @@ export async function GET(req: NextRequest) {
       const { data } = await getSupabase()
         .from('waste_logs')
         .select('item_name, quantity, unit')
+        .eq('location_id', locationId)
         .gte('created_at', date)
         .lt('created_at', nextDate)
       if (data) losses.push(...data)
@@ -111,6 +122,7 @@ export async function GET(req: NextRequest) {
       const { count } = await getSupabase()
         .from('worker_meals')
         .select('*', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .eq('meal_date', date)
       mealsCount = count || 0
     } catch {}
@@ -121,6 +133,7 @@ export async function GET(req: NextRequest) {
       const { count } = await getSupabase()
         .from('woki_messages')
         .select('*', { count: 'exact', head: true })
+        .eq('location_id', locationId)
         .gte('created_at', date)
         .lt('created_at', nextDate)
       commandsCount = count || 0
@@ -132,6 +145,7 @@ export async function GET(req: NextRequest) {
       const { data } = await getSupabase()
         .from('temperature_logs')
         .select('shift')
+        .eq('location_id', locationId)
         .eq('date', date)
       if (data) {
         tempMorning = data.some((t: any) => t.shift === 'morning')

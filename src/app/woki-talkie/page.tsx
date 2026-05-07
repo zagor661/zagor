@@ -232,6 +232,7 @@ export default function WokiTalkiePage() {
       const formData = new FormData()
       formData.append('audio', blob, 'recording.webm')
       formData.append('workers', JSON.stringify(workerList))
+      formData.append('location_name', user?.location_name || 'restauracja')
 
       setProcessingStep('AI analizuje polecenia...')
 
@@ -272,6 +273,7 @@ export default function WokiTalkiePage() {
         body: JSON.stringify({
           text: textInput.trim(),
           workers: workerList,
+          location_name: user?.location_name || 'restauracja',
         }),
       })
 

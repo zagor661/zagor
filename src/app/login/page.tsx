@@ -1,6 +1,6 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { ROLES, normalizeRole } from '@/lib/roles'
@@ -10,7 +10,6 @@ interface Profile {
   email: string
   full_name: string
   role: string
-  pin: string
 }
 
 interface Location {
@@ -47,8 +46,9 @@ const BIZ_ICONS: Record<string, string> = {
   hotel: '🏨',
 }
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { login } = useUser(false)
 
   // Steps: 'location' | 'user' | 'pin'
@@ -64,96 +64,73 @@ export default function LoginPage() {
   const [attempts, setAttempts] = useState(0)
   const [locked, setLocked] = useState(false)
 
-  // Load locations on mount
+  // Load location on mount — REQUIRES ?loc= parameter for isolation
   useEffect(() => {
     const stored = localStorage.getItem('kitchenops_user')
     if (stored) { router.push('/'); return }
 
-    async function loadLocations() {
+    let locParam = searchParams.get('loc')
+
+    // No ?loc= — check if we have a saved location from previous login
+    if (!locParam) {
+      const lastLoc = localStorage.getItem('kitchenops_last_loc')
+      if (lastLoc) {
+        locParam = lastLoc
+      } else {
+        setLoading(false)
+        return
+      }
+    }
+
+    // Save location for next time
+    localStorage.setItem('kitchenops_last_loc', locParam)
+
+    async function loadLocation() {
       const { data } = await supabase
         .from('locations')
         .select('id, name, address, business_type')
-        .order('name')
+        .eq('id', locParam!)
+        .maybeSingle()
 
-      if (data && data.length > 0) {
-        setLocations(data)
-        // If only one location, auto-select and go to users
-        if (data.length === 1) {
-          setSelectedLocation(data[0])
-          setStep('user')
-          await loadProfilesForLocation(data[0].id)
-        }
+      if (data) {
+        setSelectedLocation(data)
+        setStep('user')
+        await loadProfilesForLocation(data.id)
       }
       setLoading(false)
     }
-    loadLocations()
+    loadLocation()
   }, [])
 
   async function loadProfilesForLocation(locationId: string) {
-    // Get user IDs linked to this location (exclude expired temp access)
-    const { data: links, error: linksErr } = await supabase
-      .from('user_locations')
-      .select('user_id, expires_at')
-      .eq('location_id', locationId)
-
-    // Filter out expired entries
-    const now = new Date().toISOString()
-    const validLinks = (links || []).filter(
-      l => !l.expires_at || l.expires_at > now
-    )
-
-    let profileData: Profile[] = []
-
-    if (validLinks.length > 0) {
-      const userIds = validLinks.map(l => l.user_id)
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role, pin')
-        .eq('is_active', true)
-        .in('id', userIds)
-        .order('full_name')
-      profileData = data || []
-    }
-
-    // Fallback: if user_locations returned nothing (RLS issue or no links),
-    // load ALL active profiles so workers can still log in
-    if (profileData.length === 0) {
-      console.warn('[login] user_locations empty/blocked — loading all profiles as fallback', linksErr)
-      const { data: allProfiles } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role, pin')
-        .eq('is_active', true)
-        .order('full_name')
-      profileData = allProfiles || []
-    }
-
-    // Fetch star counts for belt colors (per location)
-    const { data: stars } = await supabase
-      .from('worker_stars')
-      .select('profile_id')
-      .eq('location_id', locationId)
-    const counts: Record<string, number> = {}
-    if (stars) {
-      for (const s of stars) {
-        counts[s.profile_id] = (counts[s.profile_id] || 0) + 1
+    try {
+      const res = await fetch(`/api/login/profiles?loc=${locationId}`)
+      if (!res.ok) {
+        setProfiles([])
+        return
       }
-    }
-    setStarCounts(counts)
+      const data = await res.json()
+      let profileData: Profile[] = data.profiles || []
+      const counts: Record<string, number> = data.stars || {}
+      setStarCounts(counts)
 
-    // Sort: role rank then stars descending
-    const roleOrder: Record<string, number> = {
-      owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3, bar: 3, bartender: 3, barman: 3,
-    }
-    profileData.sort((a, b) => {
-      const roleA = roleOrder[a.role] ?? 9
-      const roleB = roleOrder[b.role] ?? 9
-      if (roleA !== roleB) return roleA - roleB
-      const starsA = counts[a.id] || 0
-      const starsB = counts[b.id] || 0
-      return starsB - starsA
-    })
+      // Sort: role rank then stars descending
+      const roleOrder: Record<string, number> = {
+        owner: 0, admin: 0, manager: 1, kitchen: 2, worker: 2, hall: 3, bar: 3, bartender: 3, barman: 3,
+      }
+      profileData.sort((a, b) => {
+        const roleA = roleOrder[a.role] ?? 9
+        const roleB = roleOrder[b.role] ?? 9
+        if (roleA !== roleB) return roleA - roleB
+        const starsA = counts[a.id] || 0
+        const starsB = counts[b.id] || 0
+        return starsB - starsA
+      })
 
-    setProfiles(profileData)
+      setProfiles(profileData)
+    } catch {
+      setProfiles([])
+    }
   }
 
   function selectLocation(loc: Location) {
@@ -175,32 +152,48 @@ export default function LoginPage() {
     if (!selected || !selectedLocation || locked) return
     setError('')
 
-    if (pin !== selected.pin) {
-      const newAttempts = attempts + 1
-      setAttempts(newAttempts)
-      if (newAttempts >= 3) {
-        setLocked(true)
-        setError('Zbyt wiele prób! Odczekaj 2 minuty.')
-        setPin('')
-        setTimeout(() => { setLocked(false); setAttempts(0); setError('') }, 120000)
-      } else {
-        setError(`Zły PIN! (próba ${newAttempts}/3)`)
-        setPin('')
+    try {
+      const res = await fetch('/api/login/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: selected.id,
+          pin,
+          location_id: selectedLocation.id,
+        }),
+      })
+      const data = await res.json()
+
+      if (!data.ok) {
+        const newAttempts = attempts + 1
+        setAttempts(newAttempts)
+        if (newAttempts >= 3) {
+          setLocked(true)
+          setError('Zbyt wiele prób! Odczekaj 2 minuty.')
+          setPin('')
+          setTimeout(() => { setLocked(false); setAttempts(0); setError('') }, 120000)
+        } else {
+          setError(`Zły PIN! (próba ${newAttempts}/3)`)
+          setPin('')
+        }
+        return
       }
-      return
+
+      setAttempts(0)
+
+      login({
+        id: data.profile.id,
+        email: data.profile.email,
+        full_name: data.profile.full_name,
+        role: data.profile.role,
+        location_id: selectedLocation.id,
+        location_name: selectedLocation.name,
+      })
+
+      router.push('/')
+    } catch {
+      setError('Błąd połączenia z serwerem')
     }
-    setAttempts(0)
-
-    login({
-      id: selected.id,
-      email: selected.email,
-      full_name: selected.full_name,
-      role: selected.role,
-      location_id: selectedLocation.id,
-      location_name: selectedLocation.name,
-    })
-
-    router.push('/')
   }
 
   // Get icon and background for a profile
@@ -210,8 +203,7 @@ export default function LoginPage() {
     if (role === 'manager') return { icon: '👔', bgClass: `bg-gradient-to-br ${ROLES.manager.gradientFrom} ${ROLES.manager.gradientTo}` }
     if (role === 'bar') return { icon: '🍸', bgClass: `bg-gradient-to-br ${ROLES.bar.gradientFrom} ${ROLES.bar.gradientTo}` }
     const stars = starCounts[p.id] || 0
-    const effectiveStars = p.full_name.toLowerCase().includes('yurii') ? stars + 10 : stars
-    return { icon: '👨‍🍳', bgClass: getBeltBg(effectiveStars) }
+    return { icon: '👨‍🍳', bgClass: getBeltBg(stars) }
   }
 
   function getDisplayName(p: Profile) {
@@ -228,7 +220,7 @@ export default function LoginPage() {
     )
   }
 
-  // ─── STEP: Choose location ───
+  // ─── No ?loc= parameter — show message, don't expose all locations ───
   if (step === 'location') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-brand-50 to-white p-4">
@@ -236,42 +228,20 @@ export default function LoginPage() {
           <div className="text-center mb-8">
             <div className="text-6xl mb-3">👨‍🍳</div>
             <h1 className="text-3xl font-bold text-gray-900">KitchenOps</h1>
-            <p className="text-gray-500 mt-2">Wybierz lokal</p>
+            <p className="text-gray-500 mt-2">Logowanie</p>
           </div>
-          <div className="space-y-3">
-            {locations.map(loc => (
-              <button
-                key={loc.id}
-                onClick={() => selectLocation(loc)}
-                className="w-full card flex items-center gap-4 hover:border-brand-300 hover:shadow-md transition-all active:scale-98"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-brand-100 flex items-center justify-center text-2xl flex-shrink-0 shadow">
-                  {BIZ_ICONS[loc.business_type || 'restaurant'] || '🏪'}
-                </div>
-                <div className="text-left">
-                  <div className="font-bold text-gray-900">{loc.name}</div>
-                  {loc.address && (
-                    <div className="text-xs text-gray-500">{loc.address}</div>
-                  )}
-                </div>
-              </button>
-            ))}
+          <div className="card text-center py-8 space-y-3">
+            <p className="text-gray-700 font-medium">Użyj linku logowania od swojego lokalu</p>
+            <p className="text-gray-400 text-sm">Każda restauracja ma własny, unikalny link do logowania. Znajdziesz go u właściciela lokalu.</p>
           </div>
-
-          {locations.length === 0 && (
-            <div className="text-center mt-6 space-y-4">
-              <div className="card py-8">
-                <p className="text-gray-500">Brak lokali.</p>
-                <p className="text-gray-400 text-sm mt-1">Skonfiguruj swój pierwszy lokal</p>
-              </div>
-              <button
-                onClick={() => router.push('/setup')}
-                className="btn-orange w-full"
-              >
-                Rozpocznij konfigurację →
-              </button>
-            </div>
-          )}
+          <div className="mt-4 space-y-3">
+            <button
+              onClick={() => router.push('/join')}
+              className="btn-orange w-full"
+            >
+              Zarejestruj nowy lokal →
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -288,14 +258,7 @@ export default function LoginPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">{selectedLocation?.name}</h1>
             <p className="text-gray-500 mt-1">Kto się loguje?</p>
-            {locations.length > 1 && (
-              <button
-                onClick={() => { setStep('location'); setProfiles([]) }}
-                className="text-brand-600 text-sm mt-1"
-              >
-                ← Zmień lokal
-              </button>
-            )}
+            {/* Each restaurant has its own unique link — no location switching */}
           </div>
           <div className="space-y-3">
             {profiles.map(p => {
@@ -326,6 +289,7 @@ export default function LoginPage() {
               <p className="text-gray-400 text-sm mt-1">Dodaj ich w Ustawieniach po zalogowaniu jako Owner</p>
             </div>
           )}
+          {/* Debug removed for production */}
         </div>
       </div>
     )
@@ -379,5 +343,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-200 border-t-brand-500" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

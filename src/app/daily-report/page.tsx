@@ -29,7 +29,7 @@ export default function DailyReportPage() {
   useEffect(() => {
     if (!user) return
     setLoadingReport(true)
-    fetch(`/api/daily-report?date=${date}`)
+    fetch(`/api/daily-report?date=${date}&location_id=${user.location_id}`)
       .then(r => r.json())
       .then(data => {
         if (data.ok) setReport(data)
@@ -145,7 +145,7 @@ export default function DailyReportPage() {
                 <div className={`rounded-2xl border-2 p-5 text-center ${bg}`}>
                   <div className={`text-4xl font-black ${color}`}>{pct}%</div>
                   <div className="text-xs text-gray-500 mt-1 font-semibold">
-                    {pct >= 80 ? 'Swietny dzien!' : pct >= 60 ? 'Mozna lepiej' : 'Wymaga uwagi'}
+                    {pct >= 80 ? 'Świetny dzień!' : pct >= 60 ? 'Można lepiej' : 'Wymaga uwagi'}
                   </div>
                 </div>
               )
@@ -174,7 +174,7 @@ export default function DailyReportPage() {
                 </div>
               )}
               {report.checklist.total === 0 && (
-                <p className="text-xs text-gray-400">Brak wpisow z checklisty</p>
+                <p className="text-xs text-gray-400">Brak wpisów z checklisty</p>
               )}
             </div>
 
@@ -274,7 +274,7 @@ export default function DailyReportPage() {
               <div className="bg-white rounded-2xl border border-gray-200 p-4 text-center">
                 <div className="text-2xl">🍽️</div>
                 <div className="text-lg font-bold text-gray-900 mt-1">{report.meals}</div>
-                <div className="text-[10px] text-gray-400">Posilki</div>
+                <div className="text-[10px] text-gray-400">Posiłki</div>
               </div>
               <div className="bg-white rounded-2xl border border-gray-200 p-4 text-center">
                 <div className="text-2xl">📻</div>

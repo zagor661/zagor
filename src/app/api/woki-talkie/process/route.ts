@@ -59,12 +59,13 @@ async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<s
 // ─── Step 2: GPT task extraction ───────────────────────────
 async function extractTasks(
   transcription: string,
-  workers: { name: string; language: string }[]
+  workers: { name: string; language: string }[],
+  locationName: string = 'restauracja'
 ): Promise<ExtractedTask[]> {
 
   const workerList = workers.map(w => `- ${w.name} (język: ${w.language})`).join('\n')
 
-  const systemPrompt = `Jesteś asystentem restauracji WOKI WOKI. Analizujesz transkrypcję nagrania głosowego właściciela i wyodrębniasz z niej zadania dla pracowników.
+  const systemPrompt = `Jesteś asystentem restauracji ${locationName}. Analizujesz transkrypcję nagrania głosowego właściciela i wyodrębniasz z niej zadania dla pracowników.
 
 Lista pracowników:
 ${workerList}
@@ -143,6 +144,7 @@ export async function POST(req: NextRequest) {
 
     let transcription: string
     let workers: { name: string; language: string }[] = []
+    let locationName: string = 'restauracja'
 
     if (contentType.includes('multipart/form-data')) {
       // Voice message — transcribe first
@@ -150,6 +152,7 @@ export async function POST(req: NextRequest) {
       const audioFile = formData.get('audio') as File | null
       const workersJson = formData.get('workers') as string | null
       const manualText = formData.get('text') as string | null
+      locationName = (formData.get('location_name') as string) || 'restauracja'
 
       if (manualText) {
         // Text mode — skip Whisper
@@ -172,6 +175,7 @@ export async function POST(req: NextRequest) {
       const body = await req.json()
       transcription = body.text || ''
       workers = body.workers || []
+      locationName = body.location_name || 'restauracja'
 
       if (!transcription) {
         return NextResponse.json(
@@ -182,7 +186,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Extract tasks using GPT
-    const tasks = await extractTasks(transcription, workers)
+    const tasks = await extractTasks(transcription, workers, locationName)
 
     const result: ProcessResult = {
       transcription,

@@ -318,10 +318,9 @@ export default function Dashboard() {
   function getRank(name: string, stars: number) {
     const n = name.toLowerCase()
     if (n.includes('jakub')) return { icon: '🥷', label: 'NINJA', color: 'text-gray-900', bg: 'bg-gray-50 border-gray-200', chefBg: '' }
-    const effectiveStars = n.includes('yurii') ? stars + 10 : stars
     let belt = BELT_LEVELS[0]
     for (const level of BELT_LEVELS) {
-      if (effectiveStars >= level.min) belt = level
+      if (stars >= level.min) belt = level
     }
     return { icon: '🍳', label: belt.label, color: belt.color, bg: belt.bg, chefBg: belt.chefBg }
   }
@@ -355,7 +354,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-gray-900">
-                {role === 'owner' ? 'Czesc, Jakub' : `Czesc, ${user.full_name.split(' ')[0]}`}
+                {`Czesc, ${user.full_name.split(' ')[0]}`}
               </h1>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-400">{user.location_name}</span>

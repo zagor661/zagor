@@ -201,41 +201,7 @@ export default function SchedulePage() {
     setError('')
 
     try {
-      // Load workers linked to this location
-      const { data: locLinks } = await supabase
-        .from('user_locations')
-        .select('user_id')
-        .eq('location_id', user!.location_id)
-
-      const locUserIds = (locLinks || []).map(l => l.user_id)
-
-      const { data: wData } = locUserIds.length > 0
-        ? await supabase
-            .from('profiles')
-            .select('id, full_name, role, is_head_chef, hourly_rate')
-            .eq('is_active', true)
-            .in('id', locUserIds)
-            .in('role', ['kitchen', 'hall', 'bar'])
-            .order('role')
-        : { data: [] }
-
-      if (wData) {
-        setWorkers(wData)
-        const rates: Record<string, number> = {}
-        wData.forEach((w: any) => { rates[w.id] = w.hourly_rate || 0 })
-        setHourlyRates(rates)
-      }
-
-      // Load settings
-      const { data: sData } = await supabase
-        .from('schedule_settings')
-        .select('*')
-        .eq('location_id', user.location_id)
-        .single()
-
-      if (sData) setSettings(sData)
-
-      // Load shifts — cover both month view AND current week view range
+      // ── 1. Load shifts first ──
       const monthStart = format(currentMonth, 'yyyy-MM-01')
       const monthEnd = format(endOfMonth(currentMonth), 'yyyy-MM-dd')
       const weekStart = format(currentWeekStart, 'yyyy-MM-dd')
@@ -251,14 +217,50 @@ export default function SchedulePage() {
         .lte('shift_date', rangeEnd)
         .order('shift_date')
 
+      // ── 2. Load ALL worker profiles for this shift set (same pattern as dashboard) ──
+      const allWorkerIds = shData ? [...new Set(shData.map((s: any) => s.worker_id))] : []
+      let wData: any[] = []
+
+      if (allWorkerIds.length > 0) {
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('id', allWorkerIds)
+        wData = pData || []
+      }
+
+      // Also load workers from user_locations (for generate tab)
+      if (wData.length === 0) {
+        const { data: allProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('role', ['kitchen', 'hall', 'bar'])
+        wData = (allProfiles || []).filter((p: any) => p.role)
+      }
+
+      setWorkers(wData)
+      const rates: Record<string, number> = {}
+      wData.forEach((w: any) => { rates[w.id] = w.hourly_rate || 0 })
+      setHourlyRates(rates)
+
+      // ── 3. Enrich shifts with worker names ──
       if (shData) {
-        const enriched = shData.map(sh => ({
+        const enriched = shData.map((sh: any) => ({
           ...sh,
-          worker_name: wData?.find(w => w.id === sh.worker_id)?.full_name || '?',
-          worker_role: wData?.find(w => w.id === sh.worker_id)?.role || '?',
+          worker_name: wData.find((w: any) => w.id === sh.worker_id)?.full_name || '?',
+          worker_role: wData.find((w: any) => w.id === sh.worker_id)?.role || '?',
         }))
         setShifts(enriched)
       }
+
+      // ── 4. Load settings ──
+      const { data: sData } = await supabase
+        .from('schedule_settings')
+        .select('*')
+        .eq('location_id', user.location_id)
+        .maybeSingle()
+
+      if (sData) setSettings(sData)
 
       // Load approval
       const { data: apData } = await supabase

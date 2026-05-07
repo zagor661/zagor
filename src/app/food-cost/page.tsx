@@ -162,7 +162,7 @@ export default function FoodCostPage() {
         <Link href="/" className="text-white/70 font-medium text-sm">← Powrót</Link>
         <div className="text-center">
           <h1 className="text-lg font-bold">💰 Food Cost</h1>
-          <p className="text-[10px] text-white/50 uppercase tracking-[0.2em]">WOKI WOKI</p>
+          <p className="text-[10px] text-white/50 uppercase tracking-[0.2em]">{user?.location_name || 'KitchenOps'}</p>
         </div>
         <div className="w-16" />
       </div>

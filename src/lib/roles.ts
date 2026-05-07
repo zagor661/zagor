@@ -202,6 +202,15 @@ const MOD_DOSTAWY: ModuleConfig = {
   bgColor: 'bg-teal-50',
 }
 
+const MOD_RESTAURANT: ModuleConfig = {
+  href: '/restaurant',
+  icon: '🏪',
+  title: 'Moja restauracja',
+  subtitle: 'Obroty, sprzedaz, pracownicy, raporty',
+  borderColor: 'border-indigo-200',
+  bgColor: 'bg-indigo-50',
+}
+
 const MOD_USTAWIENIA: ModuleConfig = {
   href: '/settings',
   icon: '⚙️',
@@ -252,6 +261,7 @@ export const ALL_MODULES: (ModuleConfig & { id: string; category: string })[] = 
   { ...MOD_DAILY_REPORT,   id: '/daily-report',     category: 'Raporty' },
   { ...MOD_FOOD_COST,      id: '/food-cost',        category: 'Finanse' },
   { ...MOD_FAKTURY,        id: '/faktury',          category: 'Finanse' },
+  { ...MOD_RESTAURANT,     id: '/restaurant',       category: 'Finanse' },
   { ...MOD_USTAWIENIA,     id: '/settings',         category: 'System' },
 ]
 
@@ -374,9 +384,13 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES],
-    quickActions: ['/daily-report', '/tasks'],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT],
+    quickActions: ['/restaurant', '/tasks'],
     sections: [
+      {
+        title: 'Moja restauracja',
+        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST],
+      },
       {
         title: 'Zespol',
         items: [MOD_SCHEDULE, MOD_WORKER_PROFILES, MOD_STARS, MOD_MEALS],
@@ -387,12 +401,12 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       },
       {
         title: 'Operacje i finanse',
-        items: [MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FOOD_COST, MOD_FAKTURY],
+        items: [MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FAKTURY],
       },
     ],
     bottomNav: [
       { icon: '🏠', label: 'Start', href: '/' },
-      { icon: '📈', label: 'Raporty', href: '/daily-report' },
+      { icon: '🏪', label: 'Restauracja', href: '/restaurant' },
       { icon: '📋', label: 'Zadania', href: '/tasks' },
       { icon: '📻', label: 'WOKI', href: '/woki-talkie' },
       { icon: '👥', label: 'Zespol', href: '/schedule' },
@@ -408,9 +422,13 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_USTAWIENIA],
-    quickActions: ['/daily-report', '/woki-talkie'],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA],
+    quickActions: ['/restaurant', '/woki-talkie'],
     sections: [
+      {
+        title: 'Moja restauracja',
+        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST],
+      },
       {
         title: 'Zespol i grafik',
         items: [MOD_SCHEDULE, MOD_WORKER_PROFILES, MOD_STARS, MOD_MEALS],
@@ -421,7 +439,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       },
       {
         title: 'Finanse i koszty',
-        items: [MOD_DOSTAWY, MOD_FOOD_COST, MOD_FAKTURY, MOD_DAILY_REPORT],
+        items: [MOD_DOSTAWY, MOD_FAKTURY],
       },
       {
         title: 'Komunikacja',
@@ -434,7 +452,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     ],
     bottomNav: [
       { icon: '🏠', label: 'Pulse', href: '/' },
-      { icon: '📈', label: 'Raporty', href: '/daily-report' },
+      { icon: '🏪', label: 'Restauracja', href: '/restaurant' },
       { icon: '📻', label: 'WOKI', href: '/woki-talkie' },
       { icon: '👥', label: 'Zespol', href: '/schedule' },
       { icon: '⚙️', label: 'Wiecej', href: '/settings' },

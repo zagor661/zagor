@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const KITCHENOPS_ADMIN_EMAIL = 'jakub.zagorski@gmail.com'
+const KITCHENOPS_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@kitchenops.app'
 
 export async function POST(req: NextRequest) {
   try {

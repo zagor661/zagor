@@ -25,21 +25,21 @@
 html { scroll-behavior: smooth; }
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: var(--gray-800); background: #fff;
+  color: #e5e7eb; background: #0a0a0a;
   overflow-x: hidden; line-height: 1.6;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
-::selection { background: var(--brand-100); color: var(--brand-900); }
+::selection { background: var(--brand-500); color: white; }
 
 /* ─── NAV ─── */
 .nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  background: rgba(255,255,255,0.72);
+  background: rgba(10,10,10,0.72);
   backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.nav.scrolled { background: rgba(255,255,255,0.92); border-bottom-color: rgba(0,0,0,0.08); }
+.nav.scrolled { background: rgba(10,10,10,0.92); border-bottom-color: rgba(255,255,255,0.1); }
 .nav-inner {
   max-width: 1120px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between;
@@ -47,33 +47,33 @@ body {
 }
 .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .nav-logo .icon { font-size: 24px; }
-.nav-logo .text { font-size: 17px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
+.nav-logo .text { font-size: 17px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
 .nav-right { display: flex; align-items: center; gap: 6px; }
 .nav-link {
   padding: 8px 14px; border-radius: 10px; text-decoration: none;
-  font-size: 13px; font-weight: 500; color: var(--gray-500);
+  font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.5);
   transition: all 0.2s; letter-spacing: -0.01em;
 }
-.nav-link:hover { color: var(--gray-900); background: var(--gray-50); }
+.nav-link:hover { color: #ffffff; background: rgba(255,255,255,0.08); }
 .lang-btn {
-  padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--gray-200);
+  padding: 6px 14px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.15);
   cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit;
-  background: white; color: var(--gray-500); transition: all 0.2s;
+  background: transparent; color: rgba(255,255,255,0.5); transition: all 0.2s;
   letter-spacing: 0.02em;
 }
-.lang-btn:hover { border-color: var(--gray-300); color: var(--gray-700); }
+.lang-btn:hover { border-color: rgba(255,255,255,0.3); color: #ffffff; }
 .nav-cta {
   padding: 8px 20px; border-radius: 10px; border: none; cursor: pointer;
   font-size: 13px; font-weight: 600; font-family: inherit;
-  background: var(--gray-900); color: white;
+  background: var(--brand-500); color: white;
   transition: all 0.2s; text-decoration: none; margin-left: 4px;
 }
-.nav-cta:hover { background: var(--gray-700); }
+.nav-cta:hover { background: var(--brand-600); }
 
 /* ─── HERO ─── */
 .hero {
   padding: 160px 24px 100px;
-  text-align: center; position: relative; background: white;
+  text-align: center; position: relative; background: #0a0a0a;
 }
 .hero-eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
@@ -89,7 +89,7 @@ body {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 .hero h1 {
   font-size: clamp(42px, 7vw, 80px); font-weight: 900;
-  line-height: 1.0; color: var(--gray-950);
+  line-height: 1.0; color: #ffffff;
   letter-spacing: -0.04em; margin-bottom: 28px;
   max-width: 900px; margin-left: auto; margin-right: auto;
 }
@@ -106,17 +106,17 @@ body {
 .btn-primary {
   padding: 16px 40px; border-radius: 14px; border: none; cursor: pointer;
   font-size: 16px; font-weight: 600; font-family: inherit;
-  background: var(--gray-900); color: white; letter-spacing: -0.01em;
+  background: var(--brand-500); color: white; letter-spacing: -0.01em;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); text-decoration: none;
 }
-.btn-primary:hover { background: var(--gray-700); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+.btn-primary:hover { background: var(--brand-600); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(236,122,17,0.25); }
 .btn-ghost {
-  padding: 16px 40px; border-radius: 14px; border: 1.5px solid var(--gray-200); cursor: pointer;
+  padding: 16px 40px; border-radius: 14px; border: 1.5px solid rgba(255,255,255,0.15); cursor: pointer;
   font-size: 16px; font-weight: 600; font-family: inherit;
-  background: transparent; color: var(--gray-600); letter-spacing: -0.01em;
+  background: transparent; color: rgba(255,255,255,0.6); letter-spacing: -0.01em;
   transition: all 0.3s; text-decoration: none;
 }
-.btn-ghost:hover { border-color: var(--gray-300); color: var(--gray-900); }
+.btn-ghost:hover { border-color: rgba(255,255,255,0.3); color: #ffffff; }
 
 /* ─── PHONE SHOWCASE ─── */
 .showcase {
@@ -136,9 +136,9 @@ body {
 .device:nth-child(3) { transform: translateY(40px); }
 .device:nth-child(3):hover { transform: translateY(28px); }
 .device-frame {
-  border-radius: 32px; border: 5px solid var(--gray-900);
+  border-radius: 32px; border: 5px solid #333;
   background: white; overflow: hidden; position: relative;
-  box-shadow: 0 40px 100px -20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04);
+  box-shadow: 0 40px 100px -20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
 }
 .device-notch {
   width: 100px; height: 24px; margin: 0 auto;
@@ -169,27 +169,27 @@ body {
 }
 .device-label {
   text-align: center; margin-top: 14px;
-  font-size: 12px; font-weight: 600; color: var(--gray-400); letter-spacing: -0.01em;
+  font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.4); letter-spacing: -0.01em;
 }
 
 /* ─── SECTION COMMONS ─── */
-.divider { height: 1px; max-width: 120px; margin: 0 auto; background: var(--gray-200); }
+.divider { height: 1px; max-width: 120px; margin: 0 auto; background: rgba(255,255,255,0.08); }
 .section-label {
   text-align: center; font-size: 12px; font-weight: 700;
-  color: var(--brand-600); text-transform: uppercase;
+  color: var(--brand-400); text-transform: uppercase;
   letter-spacing: 0.1em; margin-bottom: 16px;
 }
 .section-title {
   text-align: center; font-size: clamp(30px, 4vw, 48px); font-weight: 900;
-  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
+  color: #ffffff; letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
 }
 .section-desc {
-  text-align: center; font-size: 17px; color: var(--gray-400);
+  text-align: center; font-size: 17px; color: rgba(255,255,255,0.45);
   max-width: 480px; margin: 0 auto 72px; line-height: 1.6; font-weight: 400;
 }
 
 /* ─── HOW IT WORKS ─── */
-.how { padding: 120px 24px; background: white; }
+.how { padding: 120px 24px; background: #0a0a0a; }
 .steps {
   max-width: 960px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px;
@@ -197,7 +197,7 @@ body {
 }
 .steps::before {
   content: ''; position: absolute; top: 40px; left: 15%; right: 15%;
-  height: 1px; background: linear-gradient(90deg, transparent, var(--gray-200), var(--gray-200), transparent);
+  height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), rgba(255,255,255,0.1), transparent);
 }
 .step { text-align: center; position: relative; }
 .step-num {
@@ -210,28 +210,28 @@ body {
 .step-num.n1 { background: var(--brand-50); color: var(--brand-500); }
 .step-num.n2 { background: #eff6ff; color: #3b82f6; }
 .step-num.n3 { background: #f0fdf4; color: #22c55e; }
-.step h3 { font-size: 18px; font-weight: 800; color: var(--gray-900); margin-bottom: 8px; letter-spacing: -0.02em; }
-.step p { font-size: 14px; color: var(--gray-500); line-height: 1.6; max-width: 260px; margin: 0 auto; }
+.step h3 { font-size: 18px; font-weight: 800; color: #ffffff; margin-bottom: 8px; letter-spacing: -0.02em; }
+.step p { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.6; max-width: 260px; margin: 0 auto; }
 
 /* ─── FEATURES ─── */
-.features { padding: 120px 24px; background: var(--gray-50); }
+.features { padding: 120px 24px; background: #111111; }
 .feat-grid {
   max-width: 1080px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
 }
 .feat-card {
-  background: white; border-radius: 20px; padding: 32px 24px;
-  border: 1px solid var(--gray-100);
+  background: rgba(255,255,255,0.04); border-radius: 20px; padding: 32px 24px;
+  border: 1px solid rgba(255,255,255,0.06);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.feat-card:hover { transform: translateY(-6px); box-shadow: 0 24px 64px -16px rgba(0,0,0,0.08); border-color: var(--gray-200); }
+.feat-card:hover { transform: translateY(-6px); box-shadow: 0 24px 64px -16px rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.12); }
 .feat-icon {
   width: 52px; height: 52px; border-radius: 16px;
   display: flex; align-items: center; justify-content: center;
   font-size: 26px; margin-bottom: 20px;
 }
-.feat-card h3 { font-size: 16px; font-weight: 800; color: var(--gray-900); margin-bottom: 8px; letter-spacing: -0.02em; }
-.feat-card p { font-size: 14px; color: var(--gray-500); line-height: 1.65; }
+.feat-card h3 { font-size: 16px; font-weight: 800; color: #ffffff; margin-bottom: 8px; letter-spacing: -0.02em; }
+.feat-card p { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.65; }
 .feat-tag {
   display: inline-block; margin-top: 16px;
   padding: 4px 12px; border-radius: 6px;
@@ -419,7 +419,7 @@ body {
 .wt-replay:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
 
 /* ─── ROLES ─── */
-.roles { padding: 120px 24px; background: white; }
+.roles { padding: 120px 24px; background: #0a0a0a; }
 .roles-row {
   max-width: 960px; margin: 0 auto;
   display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;
@@ -427,28 +427,28 @@ body {
 .role-pill {
   display: flex; align-items: center; gap: 12px;
   padding: 20px 24px; border-radius: 18px;
-  border: 1.5px solid var(--gray-100);
-  transition: all 0.3s; cursor: default; background: white;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  transition: all 0.3s; cursor: default; background: rgba(255,255,255,0.03);
   min-width: 160px;
 }
-.role-pill:hover { border-color: var(--brand-200); transform: translateY(-3px); box-shadow: 0 12px 40px -8px rgba(0,0,0,0.06); }
+.role-pill:hover { border-color: var(--brand-400); transform: translateY(-3px); box-shadow: 0 12px 40px -8px rgba(236,122,17,0.1); }
 .role-emoji { font-size: 32px; }
-.role-info h4 { font-size: 15px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.02em; }
-.role-info p { font-size: 12px; color: var(--gray-400); font-weight: 500; }
+.role-info h4 { font-size: 15px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
+.role-info p { font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 500; }
 
 /* ─── NUMBERS ─── */
-.numbers { padding: 80px 24px; background: white; border-top: 1px solid var(--gray-100); }
+.numbers { padding: 80px 24px; background: #0a0a0a; border-top: 1px solid rgba(255,255,255,0.06); }
 .numbers-row {
   max-width: 900px; margin: 0 auto;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
   text-align: center;
 }
-.num-big { font-size: 44px; font-weight: 900; color: var(--gray-900); letter-spacing: -0.04em; line-height: 1; }
-.num-big.accent { color: var(--brand-500); }
-.num-label { font-size: 13px; color: var(--gray-400); font-weight: 500; margin-top: 6px; }
+.num-big { font-size: 44px; font-weight: 900; color: #ffffff; letter-spacing: -0.04em; line-height: 1; }
+.num-big.accent { color: var(--brand-400); }
+.num-label { font-size: 13px; color: rgba(255,255,255,0.4); font-weight: 500; margin-top: 6px; }
 
 /* ─── VIDEO PLACEHOLDER ─── */
-.video-section { padding: 120px 24px; background: var(--gray-50); }
+.video-section { padding: 120px 24px; background: #111111; }
 .video-card {
   max-width: 800px; margin: 0 auto;
   border-radius: 24px; overflow: hidden;
@@ -479,13 +479,13 @@ body {
 }
 
 /* ─── CTA ─── */
-.cta-section { padding: 120px 24px; text-align: center; background: white; }
+.cta-section { padding: 120px 24px; text-align: center; background: #0a0a0a; }
 .cta-section h2 {
   font-size: clamp(32px, 5vw, 52px); font-weight: 900;
-  color: var(--gray-950); letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
+  color: #ffffff; letter-spacing: -0.03em; margin-bottom: 16px; line-height: 1.1;
 }
 .cta-section p {
-  font-size: 17px; color: var(--gray-400); margin-bottom: 40px;
+  font-size: 17px; color: rgba(255,255,255,0.45); margin-bottom: 40px;
   max-width: 420px; margin-left: auto; margin-right: auto;
 }
 .cta-section .btn-primary {
@@ -496,10 +496,10 @@ body {
 }
 
 /* ─── FOOTER ─── */
-.footer { padding: 32px 24px; text-align: center; border-top: 1px solid var(--gray-100); }
-.footer p { font-size: 13px; color: var(--gray-400); }
-.footer a { color: var(--gray-500); text-decoration: none; font-weight: 600; }
-.footer a:hover { color: var(--brand-500); }
+.footer { padding: 32px 24px; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); background: #0a0a0a; }
+.footer p { font-size: 13px; color: rgba(255,255,255,0.35); }
+.footer a { color: rgba(255,255,255,0.5); text-decoration: none; font-weight: 600; }
+.footer a:hover { color: var(--brand-400); }
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 1024px) {
@@ -566,7 +566,7 @@ body {
       <a href="#features" class="nav-link" data-pl="Moduły" data-en="Modules">Moduły</a>
       <a href="#wokitalkie" class="nav-link">WOKI TALKIE</a>
       <button class="lang-btn" onclick="toggleLang()" id="langBtn">EN</button>
-      <a href="/login" class="nav-cta" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a>
+      <a href="/join" class="nav-cta" data-pl="Dołącz" data-en="Join">Dołącz</a>
     </div>
   </div>
 </nav>
@@ -588,7 +588,7 @@ body {
       Checklisty zmianowe, HACCP, grafik, food cost, faktury AI, zespół — jedna aplikacja mobilna stworzona przez restauratora.
     </p>
     <div class="hero-actions">
-      <a href="/login" class="btn-primary" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a>
+      <a href="/join" class="btn-primary" data-pl="Rozpocznij za darmo" data-en="Start for free">Rozpocznij za darmo</a>
       <a href="#how" class="btn-ghost" data-pl="Jak to działa" data-en="How it works">Jak to działa</a>
     </div>
   </div>
@@ -815,14 +815,14 @@ body {
 <section class="cta-section">
   <div class="reveal">
     <h2 data-pl="Gotowy na zmianę?" data-en="Ready for a change?">Gotowy na zmianę?</h2>
-    <p data-pl="Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek." data-en="Log in and see for yourself. Your restaurant deserves order.">Zaloguj się i przekonaj się sam. Twoja restauracja zasługuje na porządek.</p>
-    <a href="/login" class="btn-primary" data-pl="Zaloguj się →" data-en="Log in →">Zaloguj się →</a>
+    <p data-pl="Skonfiguruj swój lokal w 5 minut. Bez zobowiązań, bez karty kredytowej." data-en="Set up your place in 5 minutes. No commitments, no credit card.">Skonfiguruj swój lokal w 5 minut. Bez zobowiązań, bez karty kredytowej.</p>
+    <a href="/join" class="btn-primary" data-pl="Rozpocznij konfigurację →" data-en="Start setup →">Rozpocznij konfigurację →</a>
   </div>
 </section>
 
 <!-- ━━━ FOOTER ━━━ -->
 <footer class="footer">
-  <p>© 2026 KitchenOps · <span data-pl="Zbudowany w Bielsku-Białej" data-en="Built in Bielsko-Biała">Zbudowany w Bielsku-Białej</span> · <a href="/login" data-pl="Zaloguj się" data-en="Log in">Zaloguj się</a></p>
+  <p>© 2026 KitchenOps · <span data-pl="Zbudowany w Bielsku-Białej" data-en="Built in Bielsko-Biała">Zbudowany w Bielsku-Białej</span> · <a href="/join" data-pl="Dołącz" data-en="Join">Dołącz</a> · <a href="/login" data-pl="Logowanie" data-en="Log in">Logowanie</a></p>
 </footer>
 
 <script>
