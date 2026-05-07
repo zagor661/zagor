@@ -260,7 +260,8 @@ export async function GET(req: NextRequest) {
 
       case 'kompozycja_orders': {
         // Fetch individual orders that contain "Kompozycja Własna"
-        // Returns per-order breakdown so we can see what each customer composed
+        // Strategy: fetch order list, then use getOrderDetail (which includes items inline)
+        // Limited to avoid Vercel 10s timeout
         requireOrg()
         const kStart = req.nextUrl.searchParams.get('date_start') || getToday()
         const kEnd = req.nextUrl.searchParams.get('date_end') || getToday()
@@ -269,56 +270,83 @@ export async function GET(req: NextRequest) {
         const allOrders = await getOrders(orgId, kStart, kEnd)
         const orderList: any[] = allOrders?.data || allOrders || []
 
-        // 2. Fetch items for each order (parallel batches of 10 to avoid rate limits)
+        // 2. Check if order_items are already inline in the list response
+        // (some POS APIs include them). If first order has order_items/items, skip detail fetch.
+        const firstOrd = orderList[0]
+        const hasInlineItems = firstOrd && (
+          Array.isArray(firstOrd.order_items) ||
+          Array.isArray(firstOrd.items) ||
+          Array.isArray(firstOrd.line_items)
+        )
+
         const compositions: {
           order_id: number
           created_at: string
           items: { name: string; quantity: number; price: number }[]
         }[] = []
 
-        // Process in batches of 10
-        for (let i = 0; i < orderList.length; i += 10) {
-          const batch = orderList.slice(i, i + 10)
+        function extractKompozycja(ord: any, items: any[]): typeof compositions[0] | null {
+          const hasK = items.some((it: any) => {
+            const n = it.product_name || it.name || it.product?.name || ''
+            return n.includes('Kompozycja')
+          })
+          if (!hasK) return null
+
+          const kompItems = items
+            .filter((it: any) => {
+              const n = it.product_name || it.name || it.product?.name || ''
+              // Include Kompozycja label + non-numbered-dish items (components)
+              return n.includes('Kompozycja') || !(/^\d{2}\s/.test(n))
+            })
+            .map((it: any) => ({
+              name: it.product_name || it.name || it.product?.name || 'Nieznany',
+              quantity: it.quantity || 1,
+              price: it.total_money?.amount || it.total_price?.amount || it.price?.amount || it.total_price || 0,
+            }))
+
+          return {
+            order_id: ord.id || ord.order_id,
+            created_at: ord.created_at || ord.closed_at || '',
+            items: kompItems,
+          }
+        }
+
+        if (hasInlineItems) {
+          // Fast path: items already in the list response
+          for (const ord of orderList) {
+            const items: any[] = ord.order_items || ord.items || ord.line_items || []
+            const result = extractKompozycja(ord, items)
+            if (result) compositions.push(result)
+          }
+        } else {
+          // Slow path: need to fetch detail per order
+          // Use Promise.all in parallel, max 20 orders to stay under Vercel timeout
+          const maxOrders = Math.min(orderList.length, 20)
+          const batch = orderList.slice(-maxOrders) // most recent N
+
           const results = await Promise.all(
             batch.map(async (ord: any) => {
               const id = ord.id || ord.order_id
               if (!id) return null
               try {
+                // Try getOrderDetail first (may include items inline)
+                const detail = await getOrderDetail(orgId, id)
+                const detailItems: any[] = detail?.order_items || detail?.items || detail?.line_items || []
+
+                if (detailItems.length > 0) {
+                  return extractKompozycja(ord, detailItems)
+                }
+
+                // Fallback: fetch items separately
                 const itemsRes = await getOrderItems(orgId, id)
                 const items: any[] = itemsRes?.data || itemsRes || []
-
-                // Check if this order has Kompozycja Własna
-                const hasKompozycja = items.some((it: any) => {
-                  const name = it.product_name || it.name || ''
-                  return name.includes('Kompozycja')
-                })
-
-                if (!hasKompozycja) return null
-
-                // Extract all items from this order that belong to the kompozycja
-                // (filter out standard numbered dishes like "01 TOKYO")
-                const kompozycjaItems = items
-                  .filter((it: any) => {
-                    const name = it.product_name || it.name || ''
-                    // Include: Kompozycja Własna itself + all components (non-numbered dishes)
-                    return name.includes('Kompozycja') || !(/^\d{2}\s/.test(name))
-                  })
-                  .map((it: any) => ({
-                    name: it.product_name || it.name || 'Nieznany',
-                    quantity: it.quantity || 1,
-                    price: it.total_money?.amount || it.price?.amount || it.total_price || 0,
-                  }))
-
-                return {
-                  order_id: id,
-                  created_at: ord.created_at || ord.closed_at || '',
-                  items: kompozycjaItems,
-                }
+                return extractKompozycja(ord, items)
               } catch {
                 return null
               }
             })
           )
+
           for (const r of results) {
             if (r) compositions.push(r)
           }
@@ -333,6 +361,7 @@ export async function GET(req: NextRequest) {
           total_orders: orderList.length,
           kompozycja_count: compositions.length,
           data: compositions,
+          _debug: { hasInlineItems, firstOrderKeys: firstOrd ? Object.keys(firstOrd).slice(0, 15) : [] },
         })
       }
 
