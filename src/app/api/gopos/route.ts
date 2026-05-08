@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   getMe, getOrganization, getItems, getCategories,
   getOrderItemsReport, getOrderItemsReportByProduct, getOrdersReport, getOrderPaymentsReport,
-  getEmployees, getWorkTimes, getPaymentMethods,
+  getEmployees, getWorkTimes, getAllWorkTimes, getPaymentMethods,
   getPosReports, getInvoices, getTaxes, getDiscounts, getMenus,
   getOrders,
 } from '@/lib/gopos'
@@ -270,8 +270,20 @@ export async function GET(req: NextRequest) {
 
       case 'work_times': {
         requireOrg()
-        const workTimes = await getWorkTimes(orgId)
+        const wtPage = req.nextUrl.searchParams.get('page')
+        const wtPerPage = req.nextUrl.searchParams.get('per_page')
+        const wtParams: Record<string, string> = {}
+        if (wtPage) wtParams.page = wtPage
+        if (wtPerPage) wtParams.per_page = wtPerPage
+        const workTimes = await getWorkTimes(orgId, wtParams)
         return NextResponse.json({ ok: true, data: workTimes })
+      }
+
+      case 'work_times_all': {
+        // Paginate through ALL work_times — for payroll verification
+        requireOrg()
+        const allWt = await getAllWorkTimes(orgId)
+        return NextResponse.json({ ok: true, data: allWt, total: allWt.length })
       }
 
       case 'payment_methods': {
