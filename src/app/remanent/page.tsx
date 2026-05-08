@@ -36,8 +36,14 @@ const PREPARED_PRODUCTS: PreparedProduct[] = [
   { name: 'Ryż z Zalewą',        category: 'Bazy i gotowe',  unit: 'kg' },
   { name: 'Olej z Wkładem',      category: 'Bazy i gotowe',  unit: 'L' },
   { name: 'Ziarna Mix',          category: 'Bazy i gotowe',  unit: 'kg' },
-  // Dodatkowe z GoPOS (modifiers sprzedawane, ale nie w foodcost)
+  // Dodatkowe z GoPOS + remanent Yuriego 2026-05-07
   { name: 'Boczniak',            category: 'Warzywa',         unit: 'kg' },
+  { name: 'Frytura',             category: 'Bazy i gotowe',   unit: 'L' },
+  { name: 'Bulion Dashi',        category: 'Bazy i gotowe',   unit: 'kg' },
+  { name: 'Liście Kafiru',       category: 'Warzywa',         unit: 'kg' },
+  { name: 'Szczypiorek',         category: 'Warzywa',         unit: 'kg' },
+  { name: 'Pomarańcze',          category: 'Warzywa',         unit: 'kg' },
+  { name: 'Mąka Ryżowa',        category: 'Inne',            unit: 'kg' },
 ]
 
 const CATEGORY_ORDER = [
