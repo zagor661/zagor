@@ -231,11 +231,20 @@ const MOD_STARS: ModuleConfig = {
 
 const MOD_REMANENT: ModuleConfig = {
   href: '/remanent',
-  icon: '📊',
+  icon: '📋',
   title: 'Remanent',
-  subtitle: 'Stany magazynowe · Inwentaryzacja',
+  subtitle: 'Inwentaryzacja · Liczenie stanow',
   borderColor: 'border-indigo-200',
   bgColor: 'bg-indigo-50',
+}
+
+const MOD_MAGAZYN: ModuleConfig = {
+  href: '/magazyn',
+  icon: '📦',
+  title: 'Stany Magazynowe',
+  subtitle: 'Live stock · Dostawy · Zuzycie',
+  borderColor: 'border-emerald-200',
+  bgColor: 'bg-emerald-50',
 }
 
 const MOD_BAR_CHECKLIST: ModuleConfig = {
@@ -270,6 +279,7 @@ export const ALL_MODULES: (ModuleConfig & { id: string; category: string })[] = 
   { ...MOD_DAILY_REPORT,   id: '/daily-report',     category: 'Raporty' },
   { ...MOD_FOOD_COST,      id: '/food-cost',        category: 'Finanse' },
   { ...MOD_REMANENT,       id: '/remanent',         category: 'Finanse' },
+  { ...MOD_MAGAZYN,        id: '/magazyn',          category: 'Finanse' },
   { ...MOD_FAKTURY,        id: '/faktury',          category: 'Finanse' },
   { ...MOD_RESTAURANT,     id: '/restaurant',       category: 'Finanse' },
   { ...MOD_USTAWIENIA,     id: '/settings',         category: 'System' },
@@ -279,7 +289,7 @@ export const ALL_MODULES: (ModuleConfig & { id: string; category: string })[] = 
 export const DEFAULT_ENABLED_MODULES: string[] = [
   '/checklist', '/tasks', '/schedule', '/meals', '/awarie',
   '/woki-talkie', '/sanepid', '/temperature', '/cleaning',
-  '/straty', '/stars', '/daily-report', '/remanent',
+  '/straty', '/stars', '/daily-report', '/remanent', '/magazyn',
 ]
 
 // ─── Definicje ról ──────────────────────────────────────────
@@ -295,7 +305,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-orange-500',
     gradientTo: 'to-amber-400',
     description: 'Temperatury, czystosc, straty, HACCP',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_MEALS, MOD_TASKS, MOD_SCHEDULE, MOD_AWARIE, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT, MOD_MAGAZYN],
     quickActions: ['/checklist', '/tasks'],
     sections: [
       {
@@ -307,8 +317,8 @@ export const ROLES: Record<RoleType, RoleConfig> = {
         items: [MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY],
       },
       {
-        title: 'Dostawy i faktury',
-        items: [MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+        title: 'Magazyn i dostawy',
+        items: [MOD_MAGAZYN, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
       },
       {
         title: 'Komunikacja',
@@ -394,7 +404,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT, MOD_MAGAZYN],
     quickActions: ['/restaurant', '/tasks'],
     sections: [
       {
@@ -410,8 +420,8 @@ export const ROLES: Record<RoleType, RoleConfig> = {
         items: [MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_RAPORTY],
       },
       {
-        title: 'Operacje i finanse',
-        items: [MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+        title: 'Magazyn i finanse',
+        items: [MOD_MAGAZYN, MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
       },
     ],
     bottomNav: [
@@ -432,7 +442,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT, MOD_MAGAZYN],
     quickActions: ['/restaurant', '/woki-talkie'],
     sections: [
       {
@@ -448,8 +458,8 @@ export const ROLES: Record<RoleType, RoleConfig> = {
         items: [MOD_CHECKLIST, MOD_TEMPERATURE, MOD_CLEANING, MOD_STRATY, MOD_RAPORTY],
       },
       {
-        title: 'Finanse i koszty',
-        items: [MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+        title: 'Magazyn i finanse',
+        items: [MOD_MAGAZYN, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
       },
       {
         title: 'Komunikacja',
