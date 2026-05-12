@@ -247,6 +247,15 @@ const MOD_MAGAZYN: ModuleConfig = {
   bgColor: 'bg-emerald-50',
 }
 
+const MOD_FAKTURY_ZAKUPOWE: ModuleConfig = {
+  href: '/faktury-zakupowe',
+  icon: '📑',
+  title: 'Faktury zakupowe',
+  subtitle: 'Fakturownia · KSeF · dostawcy',
+  borderColor: 'border-violet-200',
+  bgColor: 'bg-violet-50',
+}
+
 const MOD_BAR_CHECKLIST: ModuleConfig = {
   href: '/checklist/bar',
   icon: '🍸',
@@ -281,6 +290,7 @@ export const ALL_MODULES: (ModuleConfig & { id: string; category: string })[] = 
   { ...MOD_REMANENT,       id: '/remanent',         category: 'Finanse' },
   { ...MOD_MAGAZYN,        id: '/magazyn',          category: 'Finanse' },
   { ...MOD_FAKTURY,        id: '/faktury',          category: 'Finanse' },
+  { ...MOD_FAKTURY_ZAKUPOWE, id: '/faktury-zakupowe', category: 'Finanse' },
   { ...MOD_RESTAURANT,     id: '/restaurant',       category: 'Finanse' },
   { ...MOD_USTAWIENIA,     id: '/settings',         category: 'System' },
 ]
@@ -404,7 +414,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT, MOD_MAGAZYN],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT, MOD_MAGAZYN],
     quickActions: ['/restaurant', '/tasks'],
     sections: [
       {
@@ -421,7 +431,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       },
       {
         title: 'Magazyn i finanse',
-        items: [MOD_MAGAZYN, MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+        items: [MOD_MAGAZYN, MOD_CHECKLIST, MOD_AWARIE, MOD_DOSTAWY, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_REMANENT],
       },
     ],
     bottomNav: [
@@ -442,7 +452,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT, MOD_MAGAZYN],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT, MOD_MAGAZYN],
     quickActions: ['/restaurant', '/woki-talkie'],
     sections: [
       {
@@ -459,7 +469,7 @@ export const ROLES: Record<RoleType, RoleConfig> = {
       },
       {
         title: 'Magazyn i finanse',
-        items: [MOD_MAGAZYN, MOD_DOSTAWY, MOD_FAKTURY, MOD_REMANENT],
+        items: [MOD_MAGAZYN, MOD_DOSTAWY, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_REMANENT],
       },
       {
         title: 'Komunikacja',
