@@ -229,17 +229,20 @@ export async function sendPushToLocation(
     )
   )
 
+  const errors: string[] = []
   results.forEach((r, i) => {
     if (r.status === 'fulfilled' && r.value.success) {
       sent++
     } else {
       failed++
+      const detail = r.status === 'fulfilled' ? r.value : { error: (r as any).reason?.message }
       const statusCode = r.status === 'fulfilled' ? r.value.statusCode : undefined
+      errors.push(`[${statusCode || '?'}] ${detail.error || 'unknown'}`)
       if (statusCode === 410 || statusCode === 404) {
         expired.push(subscriptions[i].endpoint)
       }
     }
   })
 
-  return { sent, failed, expired }
+  return { sent, failed, expired, errors }
 }

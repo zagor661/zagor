@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
       sent: result.sent,
       failed: result.failed,
       expired: result.expired.length,
+      errors: result.errors || [],
     })
   } catch (err: any) {
     console.error('[push/send] Error:', err)
