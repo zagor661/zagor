@@ -71,9 +71,10 @@ function LoginContent() {
 
     let locParam = searchParams.get('loc')
 
-    // No ?loc= — check if we have a saved location from previous login
+    // No ?loc= — check cookie first (shared between Safari & PWA), then localStorage
     if (!locParam) {
-      const lastLoc = localStorage.getItem('kitchenops_last_loc')
+      const cookieLoc = document.cookie.match(/kitchenops_loc=([^;]+)/)?.[1]
+      const lastLoc = cookieLoc || localStorage.getItem('kitchenops_last_loc')
       if (lastLoc) {
         locParam = lastLoc
       } else {
@@ -82,8 +83,9 @@ function LoginContent() {
       }
     }
 
-    // Save location for next time
+    // Save location to BOTH cookie (for PWA) and localStorage (for Safari)
     localStorage.setItem('kitchenops_last_loc', locParam)
+    document.cookie = `kitchenops_loc=${locParam}; path=/; max-age=${365 * 24 * 3600}; SameSite=Lax`
 
     async function loadLocation() {
       const { data } = await supabase
