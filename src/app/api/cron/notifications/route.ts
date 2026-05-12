@@ -58,6 +58,18 @@ export async function GET(req: NextRequest) {
 
   const results: string[] = []
 
+  // ─── Helper: get managers & owners for a location ─────────
+
+  async function getManagerIds(locationId: string): Promise<string[]> {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('location_id', locationId)
+      .in('role', ['manager', 'owner', 'admin'])
+      .eq('is_active', true)
+    return data?.map(p => p.id) || []
+  }
+
   // ─── Helper: send push to specific profiles ───────────────
 
   async function pushToProfiles(profileIds: string[], locationId: string, payload: PushPayload) {
@@ -230,17 +242,33 @@ export async function GET(req: NextRequest) {
             if (existing && existing.length > 0) continue // already done
           }
 
-          await pushToLocation(loc.id, {
-            title: ct.followUp
-              ? `🚨 Checklist ${ct.label} — nie uzupełniony!`
-              : `📝 Checklist ${ct.label}`,
-            body: ct.followUp
-              ? `Checklist ${ct.label} wciąż nie jest wypełniony! Uzupełnij teraz.`
-              : `Czas wypełnić checklistę ${ct.label} lokalu!`,
-            url: '/checklist',
-            tag: `checklist-${ct.shift}`,
-          })
-          results.push(`checklist-${ct.shift}${ct.followUp ? '-followup' : ''}: ${loc.id}`)
+          if (ct.followUp) {
+            // Follow-up: send urgent to everyone + escalation to managers/owners
+            await pushToLocation(loc.id, {
+              title: `🚨 Checklist ${ct.label} — nie uzupełniony!`,
+              body: `Checklist ${ct.label} wciąż nie jest wypełniony! Uzupełnij teraz.`,
+              url: '/checklist',
+              tag: `checklist-${ct.shift}`,
+            })
+            // Extra escalation to managers/owners
+            const managerIds = await getManagerIds(loc.id)
+            if (managerIds.length > 0) {
+              await pushToProfiles(managerIds, loc.id, {
+                title: `⚠️ Checklist ${ct.label} — brak realizacji`,
+                body: `Nikt nie uzupełnił checklisty ${ct.label}. Sprawdź sytuację.`,
+                url: '/checklist',
+                tag: `checklist-${ct.shift}-mgr`,
+              })
+            }
+          } else {
+            await pushToLocation(loc.id, {
+              title: `📝 Checklist ${ct.label}`,
+              body: `Czas wypełnić checklistę ${ct.label} lokalu!`,
+              url: '/checklist',
+              tag: `checklist-${ct.shift}`,
+            })
+          }
+          results.push(`checklist-${ct.shift}${ct.followUp ? '-followup+mgr' : ''}: ${loc.id}`)
         }
       }
     }
@@ -280,17 +308,31 @@ export async function GET(req: NextRequest) {
             if (existing && existing.length > 0) continue // already done
           }
 
-          await pushToLocation(loc.id, {
-            title: tt.followUp
-              ? `🚨 Temperatury ${tt.label} — brak pomiarów!`
-              : `🌡️ Pomiary temperatur ${tt.label}`,
-            body: tt.followUp
-              ? `Pomiary temperatur ${tt.label} wciąż nie uzupełnione! Zrób to teraz.`
-              : `Pora na pomiary temperatur lodówek i zamrażarek!`,
-            url: '/temperature',
-            tag: `temp-${tt.shift}`,
-          })
-          results.push(`temp-${tt.shift}${tt.followUp ? '-followup' : ''}: ${loc.id}`)
+          if (tt.followUp) {
+            await pushToLocation(loc.id, {
+              title: `🚨 Temperatury ${tt.label} — brak pomiarów!`,
+              body: `Pomiary temperatur ${tt.label} wciąż nie uzupełnione! Zrób to teraz.`,
+              url: '/temperature',
+              tag: `temp-${tt.shift}`,
+            })
+            const managerIds = await getManagerIds(loc.id)
+            if (managerIds.length > 0) {
+              await pushToProfiles(managerIds, loc.id, {
+                title: `⚠️ Temperatury ${tt.label} — brak realizacji`,
+                body: `Nikt nie uzupełnił pomiarów temperatur ${tt.label}. Sprawdź sytuację.`,
+                url: '/temperature',
+                tag: `temp-${tt.shift}-mgr`,
+              })
+            }
+          } else {
+            await pushToLocation(loc.id, {
+              title: `🌡️ Pomiary temperatur ${tt.label}`,
+              body: `Pora na pomiary temperatur lodówek i zamrażarek!`,
+              url: '/temperature',
+              tag: `temp-${tt.shift}`,
+            })
+          }
+          results.push(`temp-${tt.shift}${tt.followUp ? '-followup+mgr' : ''}: ${loc.id}`)
         }
       }
     }
@@ -336,6 +378,7 @@ export async function GET(req: NextRequest) {
             const preview = info.titles.slice(0, 2).join(', ')
             const more = count > 2 ? ` (+${count - 2} więcej)` : ''
 
+            // Notify the worker
             await pushToProfiles([workerId], locId, {
               title: info.hasOverdue
                 ? `🚨 Masz zaległe zadania (${count})`
@@ -344,7 +387,26 @@ export async function GET(req: NextRequest) {
               url: '/tasks',
               tag: 'task-reminder',
             })
-            results.push(`task-reminder: ${workerId} (${count} tasks)`)
+
+            // Escalate overdue tasks to managers/owners
+            if (info.hasOverdue) {
+              const { data: worker } = await supabase
+                .from('profiles')
+                .select('full_name')
+                .eq('id', workerId)
+                .single()
+              const name = worker?.full_name || 'Pracownik'
+              const managerIds = await getManagerIds(locId)
+              if (managerIds.length > 0) {
+                await pushToProfiles(managerIds, locId, {
+                  title: `⚠️ Zaległe zadania — ${name}`,
+                  body: `${name} ma ${count} niewykonanych zadań: ${preview}${more}`,
+                  url: '/tasks',
+                  tag: 'task-overdue-mgr',
+                })
+              }
+            }
+            results.push(`task-reminder: ${workerId} (${count} tasks${info.hasOverdue ? ' +mgr' : ''})`)
           }
         }
       }

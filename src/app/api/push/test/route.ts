@@ -78,6 +78,24 @@ export async function GET(req: NextRequest) {
       url: '/',
       tag: 'break-alert',
     },
+    'mgr-checklist': {
+      title: '⚠️ Checklist otwarcia — brak realizacji',
+      body: 'Nikt nie uzupełnił checklisty otwarcia. Sprawdź sytuację.',
+      url: '/checklist',
+      tag: 'checklist-open-mgr',
+    },
+    'mgr-temp': {
+      title: '⚠️ Temperatury poranne — brak realizacji',
+      body: 'Nikt nie uzupełnił pomiarów temperatur poranne. Sprawdź sytuację.',
+      url: '/temperature',
+      tag: 'temp-morning-mgr',
+    },
+    'mgr-task': {
+      title: '⚠️ Zaległe zadania — Yurii',
+      body: 'Yurii ma 3 niewykonanych zadań: Umyć okap, Sprawdzić lodówkę (+1 więcej)',
+      url: '/tasks',
+      tag: 'task-overdue-mgr',
+    },
   }
 
   const payload = notifications[type] || notifications['task']
