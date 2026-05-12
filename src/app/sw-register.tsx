@@ -26,7 +26,7 @@ export function PushNotificationBanner() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     if (!('Notification' in window)) return
 
-    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BB_PzIt5V3lNL_HmrHnBAaLKjfN9N4wWx8EP9a7eLy_KYJqPMIlpMUq8aSSBqVmecpL86HkJHbrw-7Y8BBZ8SWs'
     if (!vapidKey) { console.log('[Push] No VAPID key'); return }
 
     const stored = localStorage.getItem('kitchenops_user')
@@ -77,7 +77,7 @@ export function PushNotificationBanner() {
         return
       }
 
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BB_PzIt5V3lNL_HmrHnBAaLKjfN9N4wWx8EP9a7eLy_KYJqPMIlpMUq8aSSBqVmecpL86HkJHbrw-7Y8BBZ8SWs'
       const reg = await navigator.serviceWorker.ready
       let sub = await reg.pushManager.getSubscription()
       if (!sub) {
