@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
-import { ServiceWorkerRegistration } from './sw-register'
+import { ServiceWorkerRegistration, PushNotificationBanner } from './sw-register'
 import BottomNav from '@/components/BottomNav'
 
 export const metadata: Metadata = {
@@ -32,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <BottomNav />
         <ServiceWorkerRegistration />
+        <PushNotificationBanner />
       </body>
     </html>
   )
