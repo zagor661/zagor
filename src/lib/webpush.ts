@@ -41,18 +41,21 @@ function createVapidHeaders(
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload)))
   const unsignedToken = `${headerB64}.${payloadB64}`
 
-  // Sign with ECDSA P-256
-  const privKeyBuf = base64UrlDecode(privateKey)
+  // Sign with ECDSA P-256 using JWK format
+  const pubKeyBuf = base64UrlDecode(publicKey)
+  // Public key is 65 bytes: 04 + X(32) + Y(32)
+  const x = base64UrlEncode(pubKeyBuf.subarray(1, 33))
+  const y = base64UrlEncode(pubKeyBuf.subarray(33, 65))
+
   const key = crypto.createPrivateKey({
-    key: Buffer.concat([
-      // PKCS8 prefix for P-256
-      Buffer.from('30770201010420', 'hex'),
-      privKeyBuf,
-      Buffer.from('a00a06082a8648ce3d030107a14403420004', 'hex'),
-      base64UrlDecode(publicKey),
-    ]),
-    format: 'der',
-    type: 'pkcs8',
+    key: {
+      kty: 'EC',
+      crv: 'P-256',
+      d: privateKey,
+      x,
+      y,
+    },
+    format: 'jwk',
   })
 
   const sign = crypto.createSign('SHA256')
