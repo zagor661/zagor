@@ -6,9 +6,11 @@
 // 1. Zmiana za 30 min — przypomnienie dla pracownika
 // 2. Zmiana za 10 min — drugie przypomnienie
 // 3. Nie odbito zmiany — 15 min po starcie
-// 4. Checklist otwarcia — 10:30
-// 5. Checklist zamknięcia — 20:30
-// 6. Pomiary temperatur — 11:00 i 18:00
+// 4. Checklist otwarcia — 10:30 (powtórka 11:00 jeśli brak)
+// 5. Checklist zamknięcia — 20:30 (powtórka 21:00 jeśli brak)
+// 6. Pomiary temperatur — 11:00 i 18:00 (powtórka +30 min)
+// 7. Niewykonane zadania — przypomnienia co godzinę
+// 8. Przerwa przekroczona — alert dla managerów
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -198,37 +200,47 @@ export async function GET(req: NextRequest) {
     results.push(`shift-error: ${err.message}`)
   }
 
-  // ─── 2. Checklist reminders ───────────────────────────────
+  // ─── 2. Checklist reminders (with follow-up if not done) ──
 
   try {
-    // Opening checklist: 10:30
-    if (currentHour === 10 && currentMinute >= 28 && currentMinute <= 32) {
-      const { data: locations } = await supabase.from('locations').select('id')
-      if (locations) {
-        for (const loc of locations) {
-          await pushToLocation(loc.id, {
-            title: '📝 Checklist otwarcia',
-            body: 'Czas wypełnić checklistę otwarcia lokalu!',
-            url: '/checklist',
-            tag: 'checklist-open',
-          })
-          results.push(`checklist-open: ${loc.id}`)
-        }
-      }
-    }
+    const checklistTimes = [
+      { hour: 10, minute: 30, shift: 'open' as const, label: 'otwarcia', followUp: false },
+      { hour: 11, minute: 0, shift: 'open' as const, label: 'otwarcia', followUp: true },
+      { hour: 20, minute: 30, shift: 'close' as const, label: 'zamknięcia', followUp: false },
+      { hour: 21, minute: 0, shift: 'close' as const, label: 'zamknięcia', followUp: true },
+    ]
 
-    // Closing checklist: 20:30
-    if (currentHour === 20 && currentMinute >= 28 && currentMinute <= 32) {
-      const { data: locations } = await supabase.from('locations').select('id')
-      if (locations) {
+    for (const ct of checklistTimes) {
+      if (currentHour === ct.hour && currentMinute >= ct.minute - 2 && currentMinute <= ct.minute + 2) {
+        const { data: locations } = await supabase.from('locations').select('id')
+        if (!locations) continue
+
         for (const loc of locations) {
+          // If follow-up, check if checklist was already completed today
+          if (ct.followUp) {
+            const { data: existing } = await supabase
+              .from('checklist_logs')
+              .select('id')
+              .eq('location_id', loc.id)
+              .eq('shift', ct.shift)
+              .gte('created_at', todayStr + 'T00:00:00')
+              .lte('created_at', todayStr + 'T23:59:59')
+              .limit(1)
+
+            if (existing && existing.length > 0) continue // already done
+          }
+
           await pushToLocation(loc.id, {
-            title: '📝 Checklist zamknięcia',
-            body: 'Nie zapomnij o checkliście zamknięcia!',
+            title: ct.followUp
+              ? `🚨 Checklist ${ct.label} — nie uzupełniony!`
+              : `📝 Checklist ${ct.label}`,
+            body: ct.followUp
+              ? `Checklist ${ct.label} wciąż nie jest wypełniony! Uzupełnij teraz.`
+              : `Czas wypełnić checklistę ${ct.label} lokalu!`,
             url: '/checklist',
-            tag: 'checklist-close',
+            tag: `checklist-${ct.shift}`,
           })
-          results.push(`checklist-close: ${loc.id}`)
+          results.push(`checklist-${ct.shift}${ct.followUp ? '-followup' : ''}: ${loc.id}`)
         }
       }
     }
@@ -236,37 +248,49 @@ export async function GET(req: NextRequest) {
     results.push(`checklist-error: ${err.message}`)
   }
 
-  // ─── 3. Temperature reminders ─────────────────────────────
+  // ─── 3. Temperature reminders (with follow-up) ────────────
 
   try {
-    // Morning: 11:00
-    if (currentHour === 11 && currentMinute >= 0 && currentMinute <= 4) {
-      const { data: locations } = await supabase.from('locations').select('id')
-      if (locations) {
-        for (const loc of locations) {
-          await pushToLocation(loc.id, {
-            title: '🌡️ Pomiary temperatur poranne',
-            body: 'Pora na pomiary temperatur lodówek i zamrażarek!',
-            url: '/temperature',
-            tag: 'temp-morning',
-          })
-          results.push(`temp-morning: ${loc.id}`)
-        }
-      }
-    }
+    const tempTimes = [
+      { hour: 11, minute: 0, shift: 'morning' as const, label: 'poranne', followUp: false },
+      { hour: 11, minute: 30, shift: 'morning' as const, label: 'poranne', followUp: true },
+      { hour: 18, minute: 0, shift: 'evening' as const, label: 'wieczorne', followUp: false },
+      { hour: 18, minute: 30, shift: 'evening' as const, label: 'wieczorne', followUp: true },
+    ]
 
-    // Evening: 18:00
-    if (currentHour === 18 && currentMinute >= 0 && currentMinute <= 4) {
-      const { data: locations } = await supabase.from('locations').select('id')
-      if (locations) {
+    for (const tt of tempTimes) {
+      if (currentHour === tt.hour && currentMinute >= tt.minute - 2 && currentMinute <= tt.minute + 2) {
+        const { data: locations } = await supabase.from('locations').select('id')
+        if (!locations) continue
+
         for (const loc of locations) {
+          // If follow-up, check if temperature was already logged today for this shift
+          if (tt.followUp) {
+            const timeRangeStart = tt.shift === 'morning' ? '06:00:00' : '14:00:00'
+            const timeRangeEnd = tt.shift === 'morning' ? '13:59:59' : '23:59:59'
+
+            const { data: existing } = await supabase
+              .from('temperature_logs')
+              .select('id')
+              .eq('location_id', loc.id)
+              .gte('created_at', `${todayStr}T${timeRangeStart}`)
+              .lte('created_at', `${todayStr}T${timeRangeEnd}`)
+              .limit(1)
+
+            if (existing && existing.length > 0) continue // already done
+          }
+
           await pushToLocation(loc.id, {
-            title: '🌡️ Pomiary temperatur wieczorne',
-            body: 'Pora na wieczorne pomiary temperatur!',
+            title: tt.followUp
+              ? `🚨 Temperatury ${tt.label} — brak pomiarów!`
+              : `🌡️ Pomiary temperatur ${tt.label}`,
+            body: tt.followUp
+              ? `Pomiary temperatur ${tt.label} wciąż nie uzupełnione! Zrób to teraz.`
+              : `Pora na pomiary temperatur lodówek i zamrażarek!`,
             url: '/temperature',
-            tag: 'temp-evening',
+            tag: `temp-${tt.shift}`,
           })
-          results.push(`temp-evening: ${loc.id}`)
+          results.push(`temp-${tt.shift}${tt.followUp ? '-followup' : ''}: ${loc.id}`)
         }
       }
     }
@@ -274,7 +298,62 @@ export async function GET(req: NextRequest) {
     results.push(`temp-error: ${err.message}`)
   }
 
-  // ─── 4. Break overrun alerts (for managers) ───────────────
+  // ─── 4. Incomplete task reminders (hourly, 9:00–20:00) ────
+
+  try {
+    // Run every full hour between 9:00 and 20:00
+    if (currentHour >= 9 && currentHour <= 20 && currentMinute >= 0 && currentMinute <= 4) {
+      const { data: tasks } = await supabase
+        .from('worker_tasks')
+        .select('id, title, assigned_to, location_id, due_date')
+        .eq('is_completed', false)
+        .not('assigned_to', 'is', null)
+
+      if (tasks && tasks.length > 0) {
+        // Group tasks by assigned worker
+        const byWorker: Record<string, { locationId: string; titles: string[]; overdue: boolean }[]> = {}
+        for (const t of tasks) {
+          if (!byWorker[t.assigned_to]) byWorker[t.assigned_to] = []
+          const isOverdue = t.due_date && t.due_date <= todayStr
+          byWorker[t.assigned_to].push({
+            locationId: t.location_id,
+            titles: [t.title],
+            overdue: !!isOverdue,
+          })
+        }
+
+        for (const [workerId, workerTasks] of Object.entries(byWorker)) {
+          // Group by location
+          const byLoc: Record<string, { titles: string[]; hasOverdue: boolean }> = {}
+          for (const wt of workerTasks) {
+            if (!byLoc[wt.locationId]) byLoc[wt.locationId] = { titles: [], hasOverdue: false }
+            byLoc[wt.locationId].titles.push(...wt.titles)
+            if (wt.overdue) byLoc[wt.locationId].hasOverdue = true
+          }
+
+          for (const [locId, info] of Object.entries(byLoc)) {
+            const count = info.titles.length
+            const preview = info.titles.slice(0, 2).join(', ')
+            const more = count > 2 ? ` (+${count - 2} więcej)` : ''
+
+            await pushToProfiles([workerId], locId, {
+              title: info.hasOverdue
+                ? `🚨 Masz zaległe zadania (${count})`
+                : `📋 Zadania do wykonania (${count})`,
+              body: `${preview}${more}`,
+              url: '/tasks',
+              tag: 'task-reminder',
+            })
+            results.push(`task-reminder: ${workerId} (${count} tasks)`)
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    results.push(`task-error: ${err.message}`)
+  }
+
+  // ─── 5. Break overrun alerts (for managers) ───────────────
 
   try {
     const { data: activeLogs } = await supabase
