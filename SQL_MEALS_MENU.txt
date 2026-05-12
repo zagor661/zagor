@@ -1,0 +1,6 @@
+-- Uruchom w Supabase → SQL Editor
+-- Dodaje kolumny menu_number i menu_description do worker_meals
+
+ALTER TABLE worker_meals
+  ADD COLUMN IF NOT EXISTS menu_number TEXT,
+  ADD COLUMN IF NOT EXISTS menu_description TEXT;

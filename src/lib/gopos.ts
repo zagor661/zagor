@@ -137,18 +137,17 @@ export async function getWorkTimes(orgId: string, params?: Record<string, string
 }
 
 export async function getAllWorkTimes(orgId: string): Promise<any[]> {
-  // Paginate through all work_times — GoPOS default is 20 per page
+  // Paginate through all work_times — GoPOS always returns 20 per page (ignores per_page param)
+  const GOPOS_PAGE_SIZE = 20
   const allRecords: any[] = []
   let page = 1
-  const perPage = '100'
 
   while (true) {
-    const res = await getWorkTimes(orgId, { per_page: perPage, page: String(page) })
+    const res = await getWorkTimes(orgId, { page: String(page) })
     const data: any[] = res?.data || []
     if (data.length === 0) break
     allRecords.push(...data)
-    // If we got fewer than per_page, we've reached the last page
-    if (data.length < Number(perPage)) break
+    if (data.length < GOPOS_PAGE_SIZE) break
     page++
   }
 
