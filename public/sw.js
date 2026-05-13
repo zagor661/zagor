@@ -67,21 +67,18 @@ self.addEventListener('push', (event) => {
     if (event.data) {
       data = { ...data, ...event.data.json() }
     }
-  } catch {
+  } catch (e) {
     if (event.data) {
       data.body = event.data.text()
     }
   }
 
+  // Keep options simple for iOS compatibility
   const options = {
     body: data.body,
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    vibrate: [200, 100, 200],
     data: { url: data.url || '/' },
-    actions: [
-      { action: 'open', title: 'Otworz' },
-    ],
+    tag: data.tag || 'kitchenops',
   }
 
   event.waitUntil(
