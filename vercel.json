@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/schedule-generate",
       "schedule": "0 8 24-31 * *"
+    },
+    {
+      "path": "/api/cron/ai-monitor",
+      "schedule": "0 8,10,14 * * *"
     }
   ]
 }

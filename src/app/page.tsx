@@ -38,6 +38,10 @@ export default function Dashboard() {
   const [allLosses, setAllLosses] = useState<{ item_name: string; quantity: number; estimated_value?: number; created_at: string }[]>([])
   const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; rate: number; cost: number; contract: string }[]>([])
 
+  // AI Alerts
+  const [aiAlerts, setAiAlerts] = useState<{ id: string; type: string; severity: string; title: string; description: string; created_at: string; is_read: boolean }[]>([])
+  const [aiUnreadCount, setAiUnreadCount] = useState(0)
+
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
   const isAdmin = user ? isAdminRole(user.role) : false
@@ -250,6 +254,18 @@ export default function Dashboard() {
           }
         } catch {}
       }
+
+      // AI Alerts (for manager/owner)
+      if (isAdmin) {
+        try {
+          const alertsRes = await fetch(`/api/owner/alerts?locationId=${user!.location_id}&limit=10&unreadOnly=false`)
+          if (alertsRes.ok) {
+            const alertsJson = await alertsRes.json()
+            setAiAlerts(alertsJson.alerts || [])
+            setAiUnreadCount(alertsJson.unreadCount || 0)
+          }
+        } catch {}
+      }
     }
     loadData()
 
@@ -407,6 +423,65 @@ export default function Dashboard() {
         )}
 
         {/* ─── OWNER PULSE (only for admin) ─────── */}
+        {/* AI Monitor Alerts */}
+        {isAdmin && aiAlerts.length > 0 && (
+          <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                🤖 AI Monitor
+                {aiUnreadCount > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{aiUnreadCount}</span>
+                )}
+              </h2>
+              {aiUnreadCount > 0 && (
+                <button
+                  onClick={async () => {
+                    await fetch('/api/owner/alerts', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ locationId: user.location_id, markAllRead: true }),
+                    })
+                    setAiAlerts(prev => prev.map(a => ({ ...a, is_read: true })))
+                    setAiUnreadCount(0)
+                  }}
+                  className="text-[10px] text-indigo-500 font-medium"
+                >
+                  Oznacz przeczytane
+                </button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {aiAlerts.slice(0, 5).map(alert => (
+                <div
+                  key={alert.id}
+                  className={`rounded-xl p-3 border transition-all ${
+                    alert.severity === 'critical'
+                      ? 'bg-red-50 border-red-200'
+                      : alert.severity === 'warning'
+                      ? 'bg-amber-50 border-amber-200'
+                      : 'bg-blue-50 border-blue-200'
+                  } ${!alert.is_read ? 'ring-2 ring-indigo-300' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-900 truncate">{alert.title}</p>
+                      <p className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{alert.description}</p>
+                    </div>
+                    <span className="text-[9px] text-gray-400 whitespace-nowrap mt-0.5">
+                      {new Date(alert.created_at).toLocaleTimeString('pl', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {aiAlerts.length > 5 && (
+              <Link href="/ai" className="block text-center text-xs text-indigo-500 font-medium pt-1">
+                Pokaż wszystkie ({aiAlerts.length})
+              </Link>
+            )}
+          </div>
+        )}
+
         {isAdmin && (
           <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">

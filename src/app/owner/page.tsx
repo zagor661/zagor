@@ -28,6 +28,8 @@ export default function OwnerDashboard() {
   const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; cost: number }[]>([])
   const [totalLabor, setTotalLabor] = useState(0)
   const [tempAlerts, setTempAlerts] = useState<any[]>([])
+  const [aiAlerts, setAiAlerts] = useState<{ id: string; type: string; severity: string; title: string; description: string; created_at: string; is_read: boolean }[]>([])
+  const [aiUnreadCount, setAiUnreadCount] = useState(0)
 
   const getRange = useCallback(() => {
     const end = new Date().toISOString().split('T')[0]
@@ -119,6 +121,16 @@ export default function OwnerDashboard() {
       setWasteLogs(wasteRes.data || [])
       setTodayShifts(shiftsRes.data || [])
       setTempAlerts(tempsRes.data || [])
+
+      // AI Alerts
+      try {
+        const alertsRes = await fetch(`/api/owner/alerts?locationId=${user!.location_id}&limit=20`)
+        if (alertsRes.ok) {
+          const aj = await alertsRes.json()
+          setAiAlerts(aj.alerts || [])
+          setAiUnreadCount(aj.unreadCount || 0)
+        }
+      } catch {}
 
     } catch (err) {
       console.error('[Dashboard]', err)
@@ -345,6 +357,61 @@ export default function OwnerDashboard() {
               ) : <p className="text-green-400 text-xs text-center py-4">Brak strat</p>}
             </div>
           </div>
+
+          {/* AI Monitor Alerts */}
+          {aiAlerts.length > 0 && (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-white font-bold text-sm flex items-center gap-2">
+                  🤖 AI Monitor
+                  {aiUnreadCount > 0 && (
+                    <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{aiUnreadCount} nowe</span>
+                  )}
+                </h2>
+                {aiUnreadCount > 0 && (
+                  <button
+                    onClick={async () => {
+                      await fetch('/api/owner/alerts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ locationId: user.location_id, markAllRead: true }),
+                      })
+                      setAiAlerts(prev => prev.map(a => ({ ...a, is_read: true })))
+                      setAiUnreadCount(0)
+                    }}
+                    className="text-xs text-indigo-400 hover:text-indigo-300"
+                  >
+                    Oznacz przeczytane
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {aiAlerts.map(alert => (
+                  <div
+                    key={alert.id}
+                    className={`rounded-xl p-4 border transition-all ${
+                      alert.severity === 'critical'
+                        ? 'bg-red-950/50 border-red-800'
+                        : alert.severity === 'warning'
+                        ? 'bg-amber-950/50 border-amber-800'
+                        : 'bg-blue-950/30 border-blue-900'
+                    } ${!alert.is_read ? 'ring-1 ring-indigo-500' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white">{alert.title}</p>
+                        <p className="text-xs text-gray-400 mt-1 whitespace-pre-wrap line-clamp-3">{alert.description}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-600 whitespace-nowrap">
+                        {new Date(alert.created_at).toLocaleDateString('pl', { day: '2-digit', month: '2-digit' })}{' '}
+                        {new Date(alert.created_at).toLocaleTimeString('pl', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Quick links */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
