@@ -45,8 +45,8 @@ export async function POST(req: Request) {
       supabase.from('worker_meals').select('worker_name, menu_description, meal_date').eq('location_id', locationId).gte('meal_date', monthStart),
       supabase.from('profiles').select('full_name, role, is_active, hourly_rate, contract_type').eq('is_active', true),
       supabase.from('meal_deductions').select('ingredient_name, quantity_kg').eq('location_id', locationId).gte('created_at', weekAgo),
-      supabase.from('invoices').select('supplier_name, invoice_date, net_total, gross_total, status').eq('location_id', locationId).gte('invoice_date', month3Ago).order('invoice_date', { ascending: false }).limit(30),
-      supabase.from('invoice_items').select('item_name, quantity, unit, unit_price, net_amount, price_per_kg_invoice, foodcost_price_per_kg, price_diff_pct, price_alert').limit(200),
+      supabase.from('invoices').select('id, supplier_name, invoice_date, net_total, gross_total, status').eq('location_id', locationId).gte('invoice_date', month3Ago).order('invoice_date', { ascending: false }).limit(50),
+      supabase.from('invoice_items').select('item_name, quantity, unit, unit_price, net_amount, price_per_kg_invoice, foodcost_price_per_kg, price_diff_pct, price_alert, invoice_id').limit(500),
     ])
 
     const tasks = tasksRes.data || []
@@ -57,6 +57,10 @@ export async function POST(req: Request) {
     const deductions = deductionsRes.data || []
     const invoices = invoicesRes.data || []
     const invoiceItems = invoiceItemsRes.data || []
+
+    // ─── Filter invoice items by location ────────────
+    const locationInvoiceIds = new Set(invoices.map(i => i.id))
+    const filteredInvoiceItems = invoiceItems.filter(i => locationInvoiceIds.has(i.invoice_id))
 
     // ─── GoPOS: sales + work times ────────────────────
     let salesData = 'Brak danych GoPOS'
@@ -125,6 +129,76 @@ export async function POST(req: Request) {
       }
     } catch {}
 
+    // ─── Fakturownia: purchase invoices with line items ──
+    let fakturowniaContext = 'Brak danych z Fakturowni'
+    try {
+      // Fetch last 3 months of purchase invoices from Fakturownia
+      const fk3m = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
+      const fkRes = await fetch(`${baseUrl}/api/fakturownia?action=list&period=more&date_from=${fk3m}&date_to=${today}`)
+      if (fkRes.ok) {
+        const fkJson = await fkRes.json()
+        const fkInvoices = fkJson.data || []
+        if (fkInvoices.length > 0) {
+          // Build detailed product-level data
+          const productMap: Record<string, { supplier: string; entries: { date: string; qty: number; unit: string; unitPrice: number; netAmount: number }[] }> = {}
+
+          for (const inv of fkInvoices) {
+            const supplier = inv.seller_name || inv.buyer_name || 'Nieznany'
+            const date = inv.issue_date || ''
+            const positions = inv.positions || inv.invoice_positions || []
+            for (const pos of positions) {
+              const name = (pos.name || '').trim()
+              if (!name) continue
+              if (!productMap[name]) productMap[name] = { supplier, entries: [] }
+              productMap[name].entries.push({
+                date,
+                qty: parseFloat(pos.quantity) || 0,
+                unit: pos.quantity_unit || 'szt',
+                unitPrice: parseFloat(pos.price_net) || 0,
+                netAmount: parseFloat(pos.total_price_net) || 0,
+              })
+            }
+          }
+
+          // Summary by supplier
+          const supplierTotals: Record<string, number> = {}
+          for (const inv of fkInvoices) {
+            const supplier = inv.seller_name || inv.buyer_name || 'Nieznany'
+            supplierTotals[supplier] = (supplierTotals[supplier] || 0) + (parseFloat(inv.price_net) || 0)
+          }
+
+          fakturowniaContext = `Fakturownia — faktury zakupowe (ostatnie 90 dni): ${fkInvoices.length} faktur\n`
+          fakturowniaContext += `Dostawcy: ${Object.entries(supplierTotals).map(([s, t]) => `${s}: ${Math.round(t)} zl netto`).join(', ')}\n\n`
+          fakturowniaContext += `Produkty na fakturach (wszystkie pozycje):\n`
+
+          // Sort products by total spend
+          const sortedProducts = Object.entries(productMap)
+            .map(([name, data]) => ({
+              name,
+              supplier: data.supplier,
+              totalSpend: data.entries.reduce((s, e) => s + e.netAmount, 0),
+              totalQty: data.entries.reduce((s, e) => s + e.qty, 0),
+              unit: data.entries[0]?.unit || 'szt',
+              entries: data.entries,
+              avgPrice: data.entries.length > 0
+                ? data.entries.reduce((s, e) => s + e.unitPrice, 0) / data.entries.length
+                : 0,
+              minPrice: Math.min(...data.entries.map(e => e.unitPrice)),
+              maxPrice: Math.max(...data.entries.map(e => e.unitPrice)),
+            }))
+            .sort((a, b) => b.totalSpend - a.totalSpend)
+
+          fakturowniaContext += sortedProducts.slice(0, 80).map(p => {
+            const priceRange = p.minPrice !== p.maxPrice
+              ? `${p.minPrice.toFixed(2)}-${p.maxPrice.toFixed(2)} zl/${p.unit}`
+              : `${p.avgPrice.toFixed(2)} zl/${p.unit}`
+            const history = p.entries.map(e => `${e.date}: ${e.qty}${e.unit} × ${e.unitPrice.toFixed(2)} zl`).join('; ')
+            return `- ${p.name} [${p.supplier}]: lacznie ${p.totalQty.toFixed(1)} ${p.unit}, ${Math.round(p.totalSpend)} zl netto, cena: ${priceRange} | Historia: ${history}`
+          }).join('\n')
+        }
+      }
+    } catch {}
+
     // ─── Recipes context ──────────────────────────────
     const recipesContext = DEFAULT_RECIPES.map(r => {
       const cost = r.lines.reduce((s, l) => s + l.pricePerKg * l.quantity, 0) + (r.packagingCost || 0)
@@ -157,8 +231,8 @@ export async function POST(req: Request) {
         })()
       : 'Brak faktur w systemie'
 
-    // Price alerts
-    const priceAlerts = invoiceItems.filter(i => i.price_alert === 'higher' && (i.price_diff_pct || 0) > 10)
+    // Price alerts (use filtered items)
+    const priceAlerts = filteredInvoiceItems.filter(i => i.price_alert === 'higher' && (i.price_diff_pct || 0) > 10)
     const alertsContext = priceAlerts.length > 0
       ? `Alerty cenowe (cena na fakturze wyzsza niz w recepturze >10%):\n` +
         priceAlerts.slice(0, 10).map(a => `- ${a.item_name}: receptura ${a.foodcost_price_per_kg?.toFixed(2)} zl/kg vs faktura ${a.price_per_kg_invoice?.toFixed(2)} zl/kg (+${a.price_diff_pct?.toFixed(0)}%)`).join('\n')
@@ -207,6 +281,9 @@ ${invoicesSummary}
 
 ═══ ALERTY CENOWE ═══
 ${alertsContext}
+
+═══ FAKTUROWNIA — SZCZEGOLY ZAKUPOW ═══
+${fakturowniaContext}
 `.trim()
 
     // ─── Call OpenAI ───────────────────────────────────
@@ -222,19 +299,20 @@ ${alertsContext}
           {
             role: 'system',
             content: `Jestes asystentem AI restauracji WOKI WOKI — Imbir i Ryz. Odpowiadasz KROTKO i KONKRETNIE po polsku.
-Masz pelny dostep do danych: sprzedaz z GoPOS, receptury z food cost (skladniki, ceny, marze), godziny pracy, faktury zakupowe, zadania, checklisty, temperatury, posilki pracownicze, zespol.
+Masz pelny dostep do danych: sprzedaz z GoPOS, receptury z food cost (skladniki, ceny, marze), godziny pracy, faktury zakupowe z Supabase i Fakturowni (pelne pozycje, ceny, historia), zadania, checklisty, temperatury, posilki pracownicze, zespol.
 Uzywaj danych ponizej do odpowiedzi. Jesli nie masz danych na dany temat, powiedz o tym.
 Podawaj KONKRETNE liczby, procenty i kwoty. Nie zmyslaj danych.
 Formatuj odpowiedz czytelnie. Uzywaj emoji do podkreslenia.
 Jesli pytanie dotyczy receptury — podaj pelna liste skladnikow z gramatura i kosztami.
 Jesli pytanie dotyczy sprzedazy — podaj ilości i kwoty.
 Jesli pytanie dotyczy pracownikow — podaj godziny i koszty.
+Jesli pytanie dotyczy faktur lub produktow zakupowych — uzyj danych z Fakturowni, podaj historie cen, dostawcow, ilosci.
 
 ${context}`
           },
           { role: 'user', content: message }
         ],
-        max_tokens: 1500,
+        max_tokens: 2000,
         temperature: 0.3,
       }),
     })
