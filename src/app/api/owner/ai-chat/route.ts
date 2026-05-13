@@ -132,13 +132,17 @@ export async function POST(req: Request) {
     // ─── Fakturownia: purchase invoices with line items ──
     let fakturowniaContext = 'Brak danych z Fakturowni'
     try {
-      // Fetch last 3 months of purchase invoices from Fakturownia
+      // Fetch last 3 months — multiple pages (25 invoices/page)
       const fk3m = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]
-      const fkRes = await fetch(`${baseUrl}/api/fakturownia?action=list&period=more&date_from=${fk3m}&date_to=${today}`)
-      if (fkRes.ok) {
-        const fkJson = await fkRes.json()
-        const fkInvoices = fkJson.data || []
-        if (fkInvoices.length > 0) {
+      const fkPages = await Promise.all(
+        [1, 2, 3, 4].map(p =>
+          fetch(`${baseUrl}/api/fakturownia?action=list&period=more&date_from=${fk3m}&date_to=${today}&page=${p}`)
+            .then(r => r.ok ? r.json() : { data: [] })
+            .catch(() => ({ data: [] }))
+        )
+      )
+      const fkInvoices = fkPages.flatMap(p => p.data || [])
+      if (fkInvoices.length > 0) {
           // Build detailed product-level data
           const productMap: Record<string, { supplier: string; entries: { date: string; qty: number; unit: string; unitPrice: number; netAmount: number }[] }> = {}
 
@@ -196,7 +200,6 @@ export async function POST(req: Request) {
             return `- ${p.name} [${p.supplier}]: lacznie ${p.totalQty.toFixed(1)} ${p.unit}, ${Math.round(p.totalSpend)} zl netto, cena: ${priceRange} | Historia: ${history}`
           }).join('\n')
         }
-      }
     } catch {}
 
     // ─── Recipes context ──────────────────────────────
