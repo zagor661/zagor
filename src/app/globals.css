@@ -25,3 +25,11 @@ body { font-family: system-ui, -apple-system, sans-serif; }
 .input {
   @apply w-full rounded-xl border-2 border-gray-200 px-4 py-3.5 text-base focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100 transition-colors;
 }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.35s ease-out;
+}

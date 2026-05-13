@@ -7,6 +7,7 @@ import type { RoleType, ModuleConfig } from '@/lib/roles'
 import { format } from 'date-fns'
 import { pl } from 'date-fns/locale'
 import supabase from '@/lib/supabase'
+import PushSetupGuide from '@/components/PushSetupGuide'
 
 export default function Dashboard() {
   const { user, loading, logout } = useUser()
@@ -344,6 +345,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-stone-50 p-4 pb-24">
+      <PushSetupGuide />
       <div className="max-w-lg mx-auto space-y-4">
 
         {/* ─── Header ─────────────────────────────── */}
