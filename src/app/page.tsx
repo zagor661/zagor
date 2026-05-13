@@ -346,6 +346,11 @@ export default function Dashboard() {
     <div className="min-h-screen bg-stone-50 p-4 pb-24">
       <div className="max-w-lg mx-auto space-y-4">
 
+        {/* ─── Push Debug Link (temporary) ─────────── */}
+        <Link href="/push-debug" className="block w-full p-3 bg-orange-100 text-orange-800 text-center text-sm font-bold rounded-xl">
+          🔔 Konfiguracja powiadomień push
+        </Link>
+
         {/* ─── Header ─────────────────────────────── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
