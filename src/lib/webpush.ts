@@ -93,29 +93,24 @@ function encryptPayload(
   const serverPublicKey = ecdh.getPublicKey()
   const sharedSecret = ecdh.computeSecret(clientPublicKey)
 
-  // HKDF with auth
-  const authInfo = Buffer.from('Content-Encoding: auth\0')
-  const prk = hkdf(clientAuth, sharedSecret, authInfo, 32)
-
-  // Key and nonce
-  const context = Buffer.concat([
-    Buffer.from('P-256\0'),
-    Buffer.from([0, 65]),
+  // RFC 8291: IKM derivation with WebPush info
+  const authInfo = Buffer.concat([
+    Buffer.from('WebPush: info\0'),
     clientPublicKey,
-    Buffer.from([0, 65]),
     serverPublicKey,
   ])
+  const ikm = hkdf(clientAuth, sharedSecret, authInfo, 32)
 
+  // Content encryption key and nonce (RFC 8291 — no P-256 context)
   const salt = crypto.randomBytes(16)
-  const keyInfo = Buffer.concat([Buffer.from('Content-Encoding: aes128gcm\0'), context])
-  const nonceInfo = Buffer.concat([Buffer.from('Content-Encoding: nonce\0'), context])
+  const keyInfo = Buffer.from('Content-Encoding: aes128gcm\0')
+  const nonceInfo = Buffer.from('Content-Encoding: nonce\0')
 
-  const contentEncryptionKey = hkdf(salt, prk, keyInfo, 16)
-  const nonce = hkdf(salt, prk, nonceInfo, 12)
+  const contentEncryptionKey = hkdf(salt, ikm, keyInfo, 16)
+  const nonce = hkdf(salt, ikm, nonceInfo, 12)
 
-  // Pad and encrypt
-  const padding = Buffer.alloc(2, 0) // 2 bytes of padding
-  const paddedPayload = Buffer.concat([Buffer.from(payload, 'utf8'), padding])
+  // Pad payload: content + delimiter byte (0x02 = last record)
+  const paddedPayload = Buffer.concat([Buffer.from(payload, 'utf8'), Buffer.from([2])])
 
   const cipher = crypto.createCipheriv('aes-128-gcm', contentEncryptionKey, nonce)
   const encrypted = Buffer.concat([cipher.update(paddedPayload), cipher.final()])
