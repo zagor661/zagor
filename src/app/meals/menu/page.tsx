@@ -4,6 +4,7 @@ import Link from 'next/link'
 import supabase from '@/lib/supabase'
 import { useUser } from '@/lib/useUser'
 import { isAdminRole } from '@/lib/roles'
+import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
 
 interface MenuItem {
   id: string
@@ -12,6 +13,7 @@ interface MenuItem {
   category: string
   is_active: boolean
   sort_order: number
+  recipe_id: string | null
 }
 
 const CATEGORIES = [
@@ -32,6 +34,7 @@ export default function StaffMenuPage() {
   const [number, setNumber] = useState('')
   const [name, setName] = useState('')
   const [category, setCategory] = useState('danie')
+  const [recipeId, setRecipeId] = useState<string>('')
   const [saving, setSaving] = useState(false)
 
   const isAdmin = user ? isAdminRole(user.role) : false
@@ -59,6 +62,7 @@ export default function StaffMenuPage() {
     setNumber('')
     setName('')
     setCategory('danie')
+    setRecipeId('')
     setShowForm(true)
   }
 
@@ -67,6 +71,7 @@ export default function StaffMenuPage() {
     setNumber(item.number)
     setName(item.name)
     setCategory(item.category)
+    setRecipeId(item.recipe_id || '')
     setShowForm(true)
   }
 
@@ -74,20 +79,21 @@ export default function StaffMenuPage() {
     if (!number.trim() || !name.trim()) return
     setSaving(true)
 
+    const payload = {
+      number: number.trim(),
+      name: name.trim(),
+      category,
+      recipe_id: recipeId || null,
+      updated_at: new Date().toISOString(),
+    }
+
     if (editId) {
-      await supabase.from('staff_menu').update({
-        number: number.trim(),
-        name: name.trim(),
-        category,
-        updated_at: new Date().toISOString(),
-      }).eq('id', editId)
+      await supabase.from('staff_menu').update(payload).eq('id', editId)
     } else {
       const maxSort = items.length > 0 ? Math.max(...items.map(i => i.sort_order)) + 1 : 0
       await supabase.from('staff_menu').insert({
+        ...payload,
         location_id: user!.location_id,
-        number: number.trim(),
-        name: name.trim(),
-        category,
         sort_order: maxSort,
       })
     }
@@ -111,13 +117,20 @@ export default function StaffMenuPage() {
     loadMenu()
   }
 
+  // Helper: get recipe name by id
+  function recipeName(rid: string | null): string | null {
+    if (!rid) return null
+    const r = DEFAULT_RECIPES.find(r => r.id === rid)
+    return r ? r.name : rid
+  }
+
   if (authLoading || !user) return null
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-400">Brak dostepu</p>
-          <Link href="/meals" className="text-brand-600 text-sm mt-2 block">← Wróć</Link>
+          <Link href="/meals" className="text-brand-600 text-sm mt-2 block">&larr; Wroc</Link>
         </div>
       </div>
     )
@@ -133,12 +146,12 @@ export default function StaffMenuPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Link href="/meals" className="text-brand-600 font-medium text-sm">← Posiłki</Link>
+          <Link href="/meals" className="text-brand-600 font-medium text-sm">&larr; Posilki</Link>
         </div>
 
         <div className="text-center">
           <h1 className="text-2xl font-bold">📋 Menu pracownicze</h1>
-          <p className="text-gray-400 text-sm mt-1">Zarządzaj listą dań</p>
+          <p className="text-gray-400 text-sm mt-1">Zarzadzaj lista dan</p>
         </div>
 
         {/* Add button */}
@@ -152,7 +165,7 @@ export default function StaffMenuPage() {
         {/* Form modal */}
         {showForm && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 animate-slide-up">
+            <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-6 space-y-4 animate-slide-up max-h-[90vh] overflow-y-auto">
               <h2 className="font-bold text-lg">{editId ? 'Edytuj danie' : 'Nowe danie'}</h2>
 
               <div>
@@ -199,6 +212,38 @@ export default function StaffMenuPage() {
                 </div>
               </div>
 
+              {/* Recipe link */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Receptura (auto-odejmowanie z magazynu)
+                </label>
+                <select
+                  value={recipeId}
+                  onChange={e => setRecipeId(e.target.value)}
+                  className="input"
+                >
+                  <option value="">— Brak (nie odejmuje skladnikow)</option>
+                  {DEFAULT_RECIPES.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.lines.length} skladnikow)
+                    </option>
+                  ))}
+                </select>
+                {recipeId && (
+                  <div className="mt-2 bg-green-50 rounded-xl p-3">
+                    <p className="text-xs font-bold text-green-700 mb-1">Skladniki do odejmowania:</p>
+                    <div className="space-y-0.5">
+                      {DEFAULT_RECIPES.find(r => r.id === recipeId)?.lines.map((line, i) => (
+                        <div key={i} className="text-xs text-green-600 flex justify-between">
+                          <span>{line.productName}</span>
+                          <span className="font-mono">{Math.round(line.quantity * 1000)}g</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={() => setShowForm(false)}
@@ -211,7 +256,7 @@ export default function StaffMenuPage() {
                   disabled={saving || !number.trim() || !name.trim()}
                   className="flex-1 py-3 rounded-xl bg-brand-500 text-white font-bold disabled:opacity-50"
                 >
-                  {saving ? 'Zapisuję...' : 'Zapisz'}
+                  {saving ? 'Zapisuje...' : 'Zapisz'}
                 </button>
               </div>
             </div>
@@ -220,12 +265,12 @@ export default function StaffMenuPage() {
 
         {/* Active items */}
         {loading ? (
-          <div className="text-center py-8 text-gray-300">Ładuję...</div>
+          <div className="text-center py-8 text-gray-300">Laduje...</div>
         ) : activeItems.length === 0 ? (
           <div className="card text-center py-8">
             <div className="text-4xl mb-2">🍽️</div>
-            <p className="text-gray-400 text-sm">Brak dań w menu</p>
-            <p className="text-gray-300 text-xs mt-1">Kliknij "Dodaj danie" aby zaczac</p>
+            <p className="text-gray-400 text-sm">Brak dan w menu</p>
+            <p className="text-gray-300 text-xs mt-1">Kliknij &quot;Dodaj danie&quot; aby zaczac</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -239,6 +284,13 @@ export default function StaffMenuPage() {
                     </span>
                     <span className="font-medium text-sm text-gray-800 truncate">{item.name}</span>
                   </div>
+                  {item.recipe_id && (
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                        📦 {recipeName(item.recipe_id)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <button

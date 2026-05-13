@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useUser } from '@/lib/useUser'
 import { FOODCOST_PRODUCTS } from '@/lib/foodcostProducts'
 import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
+import supabase from '@/lib/supabase'
 
 // ─── Product lists ────────────────────────────────────────
 const INGREDIENTS = FOODCOST_PRODUCTS.filter(p => p.type === 'ingredient')
@@ -187,6 +188,9 @@ export default function MagazynPage() {
   const [salesLoading, setSalesLoading] = useState(false)
   const [salesError, setSalesError] = useState('')
 
+  // Meal deductions (staff meals)
+  const [mealDeductions, setMealDeductions] = useState<{ ingredient_name: string; quantity_kg: number }[]>([])
+
   // Delivery form
   const [deliveryProduct, setDeliveryProduct] = useState('')
   const [deliveryQty, setDeliveryQty] = useState('')
@@ -233,18 +237,37 @@ export default function MagazynPage() {
     }
   }, [])
 
+  // Fetch meal deductions from Supabase
+  const fetchMealDeductions = useCallback(async (start: string, end: string) => {
+    if (!user) return
+    const { data } = await supabase
+      .from('meal_deductions')
+      .select('ingredient_name, quantity_kg')
+      .eq('location_id', user.location_id)
+      .gte('created_at', start + 'T00:00:00')
+      .lte('created_at', end + 'T23:59:59')
+    setMealDeductions(data || [])
+  }, [user])
+
   // Fetch on mount + auto-refresh every 60s
   useEffect(() => {
-    if (dateStart && dateEnd) fetchSales(dateStart, dateEnd)
+    if (dateStart && dateEnd) {
+      fetchSales(dateStart, dateEnd)
+      fetchMealDeductions(dateStart, dateEnd)
+    }
     refreshTimer.current = setInterval(() => {
-      if (dateStart && dateEnd) fetchSales(dateStart, dateEnd)
+      if (dateStart && dateEnd) {
+        fetchSales(dateStart, dateEnd)
+        fetchMealDeductions(dateStart, dateEnd)
+      }
     }, 60000)
     return () => { if (refreshTimer.current) clearInterval(refreshTimer.current) }
-  }, [dateStart, dateEnd, fetchSales])
+  }, [dateStart, dateEnd, fetchSales, fetchMealDeductions])
 
-  // ─── Consumption calculation ──────────────────────────
+  // ─── Consumption calculation (GoPOS sales + staff meals) ──
   const consumptionByProduct = useMemo(() => {
     const usage: Record<string, number> = {}
+    // GoPOS sales
     for (const sale of salesItems) {
       const recipeId = GOPOS_TO_RECIPE[sale.name]
       if (!recipeId) continue
@@ -255,8 +278,13 @@ export default function MagazynPage() {
         usage[stockName] = (usage[stockName] || 0) + line.quantity * sale.quantity
       }
     }
+    // Staff meal deductions
+    for (const d of mealDeductions) {
+      const stockName = resolveStockName(d.ingredient_name)
+      usage[stockName] = (usage[stockName] || 0) + d.quantity_kg
+    }
     return usage
-  }, [salesItems])
+  }, [salesItems, mealDeductions])
 
   // ─── Consumption by dish (for Zuzycie tab) ───────────
   const consumptionByDish = useMemo(() => {

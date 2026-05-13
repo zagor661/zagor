@@ -21,6 +21,7 @@ interface MenuItem {
   number: string
   name: string
   category: string
+  recipe_id: string | null
 }
 
 interface MealStat {
@@ -43,6 +44,7 @@ export default function MealsPage() {
   const [adding, setAdding] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null)
   const [menuNumber, setMenuNumber] = useState('')
   const [menuDesc, setMenuDesc] = useState('')
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
@@ -70,7 +72,7 @@ export default function MealsPage() {
   async function loadMenuItems() {
     const { data } = await supabase
       .from('staff_menu')
-      .select('id, number, name, category')
+      .select('id, number, name, category, recipe_id')
       .eq('location_id', user!.location_id)
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
@@ -148,12 +150,14 @@ export default function MealsPage() {
 
   function selectMenuItem(item: MenuItem) {
     setSelectedMenuId(item.id)
+    setSelectedRecipeId(item.recipe_id)
     setMenuNumber(item.number)
     setMenuDesc(item.name)
   }
 
   function clearSelection() {
     setSelectedMenuId(null)
+    setSelectedRecipeId(null)
     setMenuNumber('')
     setMenuDesc('')
   }
@@ -163,17 +167,18 @@ export default function MealsPage() {
     if (!menuNumber.trim()) { alert('Wybierz danie z menu'); return }
     setAdding(true)
 
-    const { error } = await supabase.from('worker_meals').insert({
+    const { data: mealData, error } = await supabase.from('worker_meals').insert({
       profile_id: user.id,
       location_id: user.location_id,
       meal_date: today,
       menu_number: menuNumber.trim(),
       menu_description: menuDesc.trim() || null,
-    })
+    }).select('id').single()
 
     if (error) {
       alert('Blad: ' + error.message)
     } else {
+      // Send report to Google Sheets
       fetch('/api/send-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,6 +194,19 @@ export default function MealsPage() {
           },
         }),
       }).catch(() => {})
+
+      // Deduct ingredients from stock if recipe is linked
+      if (selectedRecipeId && mealData?.id) {
+        fetch('/api/meals/deduct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mealId: mealData.id,
+            locationId: user.location_id,
+            recipeId: selectedRecipeId,
+          }),
+        }).catch(() => {})
+      }
 
       clearSelection()
       setShowForm(false)
