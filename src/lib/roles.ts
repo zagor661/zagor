@@ -256,6 +256,15 @@ const MOD_FAKTURY_ZAKUPOWE: ModuleConfig = {
   bgColor: 'bg-violet-50',
 }
 
+const MOD_AI: ModuleConfig = {
+  href: '/ai',
+  icon: '🤖',
+  title: 'AI Asystent',
+  subtitle: 'Zapytaj o dane restauracji',
+  borderColor: 'border-indigo-200',
+  bgColor: 'bg-indigo-50',
+}
+
 const MOD_BAR_CHECKLIST: ModuleConfig = {
   href: '/checklist/bar',
   icon: '🍸',
@@ -414,12 +423,12 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-blue-600',
     gradientTo: 'to-cyan-400',
     description: 'Pelen dostep + gwiazdki + raporty',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT, MOD_MAGAZYN],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_REMANENT, MOD_MAGAZYN, MOD_AI],
     quickActions: ['/restaurant', '/tasks'],
     sections: [
       {
         title: 'Moja restauracja',
-        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST],
+        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST, MOD_AI],
       },
       {
         title: 'Zespol',
@@ -452,12 +461,12 @@ export const ROLES: Record<RoleType, RoleConfig> = {
     gradientFrom: 'from-gray-900',
     gradientTo: 'to-gray-700',
     description: 'Podglad wszystkiego + ustawienia',
-    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT, MOD_MAGAZYN],
+    modules: [MOD_CHECKLIST, MOD_SANEPID, MOD_TASKS, MOD_SCHEDULE, MOD_MEALS, MOD_AWARIE, MOD_RAPORTY, MOD_DAILY_REPORT, MOD_WOKI_TALKIE, MOD_FOOD_COST, MOD_FAKTURY, MOD_FAKTURY_ZAKUPOWE, MOD_WORKER_PROFILES, MOD_RESTAURANT, MOD_USTAWIENIA, MOD_REMANENT, MOD_MAGAZYN, MOD_AI],
     quickActions: ['/restaurant', '/woki-talkie'],
     sections: [
       {
         title: 'Moja restauracja',
-        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST],
+        items: [MOD_RESTAURANT, MOD_DAILY_REPORT, MOD_FOOD_COST, MOD_AI],
       },
       {
         title: 'Zespol i grafik',

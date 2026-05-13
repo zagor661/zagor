@@ -2,173 +2,139 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useUser } from '@/lib/useUser'
 import supabase from '@/lib/supabase'
-import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns'
-import { pl } from 'date-fns/locale'
 import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
+import Link from 'next/link'
 
-interface DailySales {
-  date: string
-  label: string
-  revenue: number
-  orders: number
-}
-
-interface DishSale {
-  name: string
-  quantity: number
-  revenue: number
-}
-
-interface WorkerCost {
-  name: string
-  hours: number
-  cost: number
-}
+interface DailySale { date: string; revenue: number; net_revenue: number; quantity: number; transactions: number }
+interface ItemSale { name: string; quantity: number; revenue: number }
+interface Issue { id: string; title: string; status: string; created_at: string }
+interface WastLog { item_name: string; quantity: number; estimated_value: number; created_at: string }
 
 export default function OwnerDashboard() {
   const { user } = useUser()
   const [period, setPeriod] = useState<'week' | 'month'>('week')
-  const [dailySales, setDailySales] = useState<DailySales[]>([])
-  const [topDishes, setTopDishes] = useState<DishSale[]>([])
-  const [workerCosts, setWorkerCosts] = useState<WorkerCost[]>([])
+  const [dailySales, setDailySales] = useState<DailySale[]>([])
+  const [topDishes, setTopDishes] = useState<ItemSale[]>([])
   const [totalRevenue, setTotalRevenue] = useState(0)
   const [totalFoodCost, setTotalFoodCost] = useState(0)
-  const [totalLabor, setTotalLabor] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [mealCount, setMealCount] = useState(0)
   const [tasksDone, setTasksDone] = useState(0)
   const [tasksTotal, setTasksTotal] = useState(0)
+  const [mealCount, setMealCount] = useState(0)
+  const [checklistCount, setChecklistCount] = useState(0)
+  const [issuesOpen, setIssuesOpen] = useState<Issue[]>([])
+  const [wasteLogs, setWasteLogs] = useState<WastLog[]>([])
+  const [todayShifts, setTodayShifts] = useState<any[]>([])
+  const [workerHours, setWorkerHours] = useState<{ name: string; hours: number; cost: number }[]>([])
+  const [totalLabor, setTotalLabor] = useState(0)
+  const [tempAlerts, setTempAlerts] = useState<any[]>([])
 
-  const today = new Date()
-  const dateRange = period === 'week'
-    ? { start: format(subDays(today, 6), 'yyyy-MM-dd'), end: format(today, 'yyyy-MM-dd') }
-    : { start: format(startOfMonth(today), 'yyyy-MM-dd'), end: format(endOfMonth(today), 'yyyy-MM-dd') }
+  const getRange = useCallback(() => {
+    const end = new Date().toISOString().split('T')[0]
+    const start = period === 'week'
+      ? new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0]
+      : end.slice(0, 7) + '-01'
+    return { start, end }
+  }, [period])
 
   const fetchData = useCallback(async () => {
-    if (!user) return
+    if (!user?.location_id) return
     setLoading(true)
 
     try {
-      // 1. Sales from GoPOS
-      const salesRes = await fetch(`/api/gopos?action=sales_by_item&date_start=${dateRange.start}&date_end=${dateRange.end}`)
-      const salesJson = await salesRes.json()
-      const items = salesJson.data?.items || []
+      const { start, end } = getRange()
+      const today = new Date().toISOString().split('T')[0]
 
-      // Calculate top dishes
-      const dishes: DishSale[] = items
-        .map((it: any) => ({ name: it.name, quantity: it.quantity || it.count || 0, revenue: (it.quantity || 0) * (it.price || 0) }))
-        .sort((a: DishSale, b: DishSale) => b.quantity - a.quantity)
-        .slice(0, 10)
-      setTopDishes(dishes)
+      // ─── Parallel fetches ────────────────────────────
+      const [
+        salesRes, itemsRes, workRes,
+        tasksAllRes, tasksDoneRes,
+        checkRes, mealsCountRes,
+        issuesRes, wasteRes, shiftsRes, tempsRes,
+      ] = await Promise.all([
+        fetch(`/api/gopos?action=sales&date_start=${start}&date_end=${end}`).catch(() => null),
+        fetch(`/api/gopos?action=sales_by_item&date_start=${start}&date_end=${end}`).catch(() => null),
+        fetch(`/api/gopos?action=work_times_all`).catch(() => null),
+        supabase.from('worker_tasks').select('*', { count: 'exact', head: true }).eq('location_id', user.location_id).gte('created_at', start),
+        supabase.from('worker_tasks').select('*', { count: 'exact', head: true }).eq('location_id', user.location_id).eq('is_completed', true).gte('created_at', start),
+        supabase.from('checklist_logs').select('*', { count: 'exact', head: true }).eq('location_id', user.location_id).gte('created_at', today),
+        supabase.from('worker_meals').select('*', { count: 'exact', head: true }).eq('location_id', user.location_id).gte('meal_date', start),
+        supabase.from('issues').select('id, title, status, created_at').eq('location_id', user.location_id).neq('status', 'resolved').order('created_at', { ascending: false }).limit(10),
+        supabase.from('waste_logs').select('item_name, quantity, estimated_value, created_at').eq('location_id', user.location_id).gte('created_at', start).order('created_at', { ascending: false }).limit(10),
+        supabase.from('schedule_shifts').select('shift_date, profiles(full_name, role)').eq('location_id', user.location_id).eq('shift_date', today),
+        supabase.from('temperature_logs').select('device_name, temperature, recorded_by_name, created_at').eq('location_id', user.location_id).gte('created_at', today).order('created_at', { ascending: false }).limit(10),
+      ])
 
-      // Daily breakdown
-      const dailyRes = await fetch(`/api/gopos?action=daily_reports&date_start=${dateRange.start}&date_end=${dateRange.end}`)
-      const dailyJson = await dailyRes.json()
-      const reports = dailyJson.data?.reports || dailyJson.data || []
-
-      const days: DailySales[] = []
-      let rev = 0
-
-      if (Array.isArray(reports)) {
-        for (const r of reports) {
-          const date = r.date || r.report_date || ''
-          const revenue = r.total || r.revenue || r.net_total || 0
-          const orders = r.orders_count || r.receipts || 0
-          days.push({
-            date,
-            label: date ? format(new Date(date), 'EEE d', { locale: pl }) : '',
-            revenue: Math.round(revenue),
-            orders,
-          })
-          rev += revenue
-        }
-      }
-      setDailySales(days.sort((a, b) => a.date.localeCompare(b.date)))
-      setTotalRevenue(Math.round(rev))
-
-      // 2. Food cost calculation
-      let foodCost = 0
-      for (const item of items) {
-        const recipe = DEFAULT_RECIPES.find(r => r.name === item.name || r.name.includes(item.name?.split(' ')[0]))
-        if (recipe) {
-          const portionCost = recipe.lines.reduce((sum, l) => sum + l.pricePerKg * l.quantity, 0) + (recipe.packagingCost || 0)
-          foodCost += portionCost * (item.quantity || 0)
-        }
-      }
-      setTotalFoodCost(Math.round(foodCost))
-
-      // 3. Worker costs from work_times
-      const workRes = await fetch(`/api/gopos?action=work_times&date_start=${dateRange.start}&date_end=${dateRange.end}`)
-      const workJson = await workRes.json()
-      const workTimes = workJson.data?.work_times || workJson.data || []
-
-      const costMap: Record<string, { hours: number; cost: number }> = {}
-      let laborTotal = 0
-
-      if (Array.isArray(workTimes)) {
-        for (const wt of workTimes) {
-          const name = wt.employee_name || wt.worker_name || 'Nieznany'
-          const hours = wt.total_hours || wt.hours || 0
-          const rate = wt.hourly_rate || 28.1 // default rate
-          const cost = hours * rate
-          if (!costMap[name]) costMap[name] = { hours: 0, cost: 0 }
-          costMap[name].hours += hours
-          costMap[name].cost += cost
-          laborTotal += cost
-        }
+      // Sales daily
+      if (salesRes?.ok) {
+        const sJson = await salesRes.json()
+        const daily = (sJson.data?.daily || []).sort((a: DailySale, b: DailySale) => a.date.localeCompare(b.date))
+        setDailySales(daily)
+        const rev = sJson.data?.summary?.total_revenue || daily.reduce((s: number, d: DailySale) => s + (d.revenue || 0), 0)
+        setTotalRevenue(Math.round(rev))
       }
 
-      setWorkerCosts(
-        Object.entries(costMap)
-          .map(([name, data]) => ({ name, hours: Math.round(data.hours * 10) / 10, cost: Math.round(data.cost) }))
-          .sort((a, b) => b.cost - a.cost)
-      )
-      setTotalLabor(Math.round(laborTotal))
+      // Sales by item
+      if (itemsRes?.ok) {
+        const iJson = await itemsRes.json()
+        const items = (iJson.data?.items || []).sort((a: ItemSale, b: ItemSale) => (b.quantity || 0) - (a.quantity || 0))
+        setTopDishes(items.slice(0, 10))
 
-      // 4. KPIs from Supabase
-      const todayStr = format(today, 'yyyy-MM-dd')
+        // Food cost
+        let fc = 0
+        for (const item of items) {
+          const recipe = DEFAULT_RECIPES.find(r => r.name === item.name || item.name?.includes(r.name.replace(/^\d+\s+/, '')))
+          if (recipe) {
+            fc += (recipe.lines.reduce((s, l) => s + l.pricePerKg * l.quantity, 0) + (recipe.packagingCost || 0)) * (item.quantity || 0)
+          }
+        }
+        setTotalFoodCost(Math.round(fc))
+      }
 
-      const { count: mealsCount } = await supabase
-        .from('worker_meals')
-        .select('*', { count: 'exact', head: true })
-        .eq('location_id', user.location_id)
-        .eq('meal_date', todayStr)
+      // Work times
+      if (workRes?.ok) {
+        const wJson = await workRes.json()
+        const wts = wJson.data || []
+        const byEmp: Record<string, number> = {}
+        for (const wt of wts) {
+          const name = wt.employee_name || wt.employee?.name || `${wt.employee?.first_name || ''} ${wt.employee?.last_name || ''}`.trim()
+          if (name && wt.duration) byEmp[name] = (byEmp[name] || 0) + wt.duration / 3600
+        }
+        const profiles = (await supabase.from('profiles').select('full_name, hourly_rate').eq('is_active', true)).data || []
+        const hrs = Object.entries(byEmp).map(([name, hours]) => {
+          const p = profiles.find(pr => pr.full_name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(pr.full_name.toLowerCase()))
+          const cost = hours * (p?.hourly_rate || 0)
+          return { name, hours: Math.round(hours * 10) / 10, cost: Math.round(cost) }
+        }).sort((a, b) => b.hours - a.hours)
+        setWorkerHours(hrs)
+        setTotalLabor(hrs.reduce((s, h) => s + h.cost, 0))
+      }
 
-      setMealCount(mealsCount || 0)
-
-      const { count: doneCount } = await supabase
-        .from('worker_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('location_id', user.location_id)
-        .eq('is_completed', true)
-        .gte('created_at', dateRange.start)
-
-      const { count: allCount } = await supabase
-        .from('worker_tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('location_id', user.location_id)
-        .gte('created_at', dateRange.start)
-
-      setTasksDone(doneCount || 0)
-      setTasksTotal(allCount || 0)
+      // Supabase data
+      setTasksTotal(tasksAllRes.count || 0)
+      setTasksDone(tasksDoneRes.count || 0)
+      setChecklistCount(checkRes.count || 0)
+      setMealCount(mealsCountRes.count || 0)
+      setIssuesOpen(issuesRes.data || [])
+      setWasteLogs(wasteRes.data || [])
+      setTodayShifts(shiftsRes.data || [])
+      setTempAlerts(tempsRes.data || [])
 
     } catch (err) {
-      console.error('[OwnerDashboard]', err)
+      console.error('[Dashboard]', err)
     }
-
     setLoading(false)
-  }, [user, dateRange.start, dateRange.end])
+  }, [user?.location_id, getRange])
 
-  useEffect(() => {
-    fetchData()
-  }, [period])
+  useEffect(() => { fetchData() }, [fetchData])
 
   if (!user) return null
 
-  const foodCostPct = totalRevenue > 0 ? Math.round((totalFoodCost / totalRevenue) * 100) : 0
+  const fcPct = totalRevenue > 0 ? Math.round((totalFoodCost / totalRevenue) * 100) : 0
   const laborPct = totalRevenue > 0 ? Math.round((totalLabor / totalRevenue) * 100) : 0
-  const maxDayRevenue = Math.max(...dailySales.map(d => d.revenue), 1)
   const taskPct = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0
+  const maxDayRev = Math.max(...dailySales.map(d => d.revenue || 0), 1)
+  const dayNames = ['Nd', 'Pn', 'Wt', 'Sr', 'Cz', 'Pt', 'So']
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -176,153 +142,101 @@ export default function OwnerDashboard() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {format(today, 'EEEE, d MMMM yyyy', { locale: pl })}
-          </p>
+          <p className="text-gray-500 text-sm mt-1">{user.location_name} — {new Date().toLocaleDateString('pl', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <div className="flex bg-gray-800 rounded-xl p-1">
-          <button
-            onClick={() => setPeriod('week')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              period === 'week' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            7 dni
-          </button>
-          <button
-            onClick={() => setPeriod('month')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              period === 'month' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            Miesiac
-          </button>
+          {(['week', 'month'] as const).map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${period === p ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+              {p === 'week' ? '7 dni' : 'Miesiac'}
+            </button>
+          ))}
         </div>
       </div>
 
       {loading ? (
-        <div className="text-gray-500 text-center py-20">Ladowanie danych...</div>
+        <div className="text-center py-20">
+          <div className="text-4xl mb-4 animate-pulse">📊</div>
+          <p className="text-gray-500 text-sm">Ladowanie danych...</p>
+        </div>
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <KpiCard
-              label="Przychod"
-              value={`${totalRevenue.toLocaleString('pl')} zl`}
-              icon="💰"
-              color="from-green-500/20 to-green-600/5"
-              textColor="text-green-400"
-            />
-            <KpiCard
-              label="Food Cost"
-              value={`${foodCostPct}%`}
-              subtitle={`${totalFoodCost.toLocaleString('pl')} zl`}
-              icon="🥘"
-              color={foodCostPct > 35 ? 'from-red-500/20 to-red-600/5' : 'from-amber-500/20 to-amber-600/5'}
-              textColor={foodCostPct > 35 ? 'text-red-400' : 'text-amber-400'}
-            />
-            <KpiCard
-              label="Koszty pracy"
-              value={`${laborPct}%`}
-              subtitle={`${totalLabor.toLocaleString('pl')} zl`}
-              icon="👥"
-              color="from-blue-500/20 to-blue-600/5"
-              textColor="text-blue-400"
-            />
-            <KpiCard
-              label="Zadania"
-              value={`${taskPct}%`}
-              subtitle={`${tasksDone}/${tasksTotal} wykonane`}
-              icon="✅"
-              color="from-purple-500/20 to-purple-600/5"
-              textColor="text-purple-400"
-            />
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <KpiCard label="Przychod" value={`${totalRevenue.toLocaleString('pl')} zl`} icon="💰" color="from-green-500/20 to-green-600/5" textColor="text-green-400" />
+            <KpiCard label="Food Cost" value={`${fcPct}%`} subtitle={`${totalFoodCost.toLocaleString('pl')} zl`} icon="🥘"
+              color={fcPct > 35 ? 'from-red-500/20 to-red-600/5' : 'from-amber-500/20 to-amber-600/5'}
+              textColor={fcPct > 35 ? 'text-red-400' : fcPct > 30 ? 'text-amber-400' : 'text-green-400'} />
+            <KpiCard label="Koszty pracy" value={`${laborPct}%`} subtitle={`${totalLabor.toLocaleString('pl')} zl`} icon="👥" color="from-blue-500/20 to-blue-600/5" textColor="text-blue-400" />
+            <KpiCard label="Zadania" value={`${taskPct}%`} subtitle={`${tasksDone}/${tasksTotal}`} icon="✅" color="from-purple-500/20 to-purple-600/5" textColor="text-purple-400" />
+            <KpiCard label="Awarie" value={`${issuesOpen.length}`} subtitle={issuesOpen.length > 0 ? 'otwartych' : 'brak'} icon="🔧"
+              color={issuesOpen.length > 0 ? 'from-red-500/20 to-red-600/5' : 'from-green-500/20 to-green-600/5'}
+              textColor={issuesOpen.length > 0 ? 'text-red-400' : 'text-green-400'} />
           </div>
 
           {/* Charts row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             {/* Sales chart */}
             <div className="lg:col-span-2 bg-gray-900 rounded-2xl border border-gray-800 p-6">
               <h2 className="text-white font-bold text-sm mb-4">Sprzedaz dzienna</h2>
               {dailySales.length === 0 ? (
-                <p className="text-gray-600 text-sm text-center py-8">Brak danych sprzedazy</p>
+                <p className="text-gray-600 text-sm text-center py-8">Brak danych sprzedazy z GoPOS</p>
               ) : (
                 <div className="flex items-end gap-1 h-48">
-                  {dailySales.map((d, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[10px] text-gray-500 font-mono">
-                        {d.revenue > 0 ? `${Math.round(d.revenue / 1000)}k` : ''}
-                      </span>
-                      <div
-                        className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-lg transition-all hover:from-indigo-500 hover:to-indigo-300 cursor-pointer relative group min-h-[2px]"
-                        style={{ height: `${Math.max((d.revenue / maxDayRevenue) * 150, 2)}px` }}
-                      >
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-10 border border-gray-700">
-                          {d.revenue.toLocaleString('pl')} zl
-                          <br />
-                          {d.orders} zamowien
+                  {dailySales.map((d, i) => {
+                    const h = (d.revenue || 0) / maxDayRev * 100
+                    const day = new Date(d.date)
+                    const label = `${day.getDate()}.${day.getMonth() + 1}`
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center group relative">
+                        <div className="absolute -top-8 bg-gray-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                          {label}: {Math.round(d.revenue || 0)} zl | {d.quantity || 0} szt | {d.transactions || 0} tx
                         </div>
+                        <div className="w-full bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-md hover:from-indigo-500 hover:to-indigo-300 transition-all cursor-pointer"
+                          style={{ height: `${Math.max(h, 2)}%`, minHeight: '2px' }} />
+                        {dailySales.length <= 14 && <span className="text-[9px] text-gray-600 mt-1">{dayNames[day.getDay()]}</span>}
                       </div>
-                      <span className="text-[10px] text-gray-600">{d.label}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Food Cost gauge */}
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
+            {/* FC gauge */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 flex flex-col items-center justify-center">
               <h2 className="text-white font-bold text-sm mb-4">Food Cost %</h2>
-              <div className="flex flex-col items-center justify-center h-48">
-                <div className="relative w-32 h-32">
-                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                    <circle cx="50" cy="50" r="40" fill="none" stroke="#1f2937" strokeWidth="8" />
-                    <circle
-                      cx="50" cy="50" r="40" fill="none"
-                      stroke={foodCostPct > 35 ? '#ef4444' : foodCostPct > 30 ? '#f59e0b' : '#22c55e'}
-                      strokeWidth="8"
-                      strokeDasharray={`${foodCostPct * 2.51} 251`}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className={`text-3xl font-bold ${foodCostPct > 35 ? 'text-red-400' : foodCostPct > 30 ? 'text-amber-400' : 'text-green-400'}`}>
-                      {foodCostPct}%
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-3 text-center">
-                  <p className="text-gray-500 text-xs">Koszt: {totalFoodCost.toLocaleString('pl')} zl</p>
-                  <p className="text-gray-600 text-[10px]">Cel: &lt;30%</p>
-                </div>
+              <div className="relative w-28 h-28">
+                <svg viewBox="0 0 36 36" className="w-full h-full">
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1f2937" strokeWidth="3" />
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none"
+                    stroke={fcPct > 35 ? '#ef4444' : fcPct > 30 ? '#f59e0b' : '#22c55e'}
+                    strokeWidth="3" strokeDasharray={`${fcPct}, 100`} strokeLinecap="round" />
+                  <text x="18" y="20" textAnchor="middle" className="text-[8px] font-bold" fill="white">{fcPct}%</text>
+                </svg>
               </div>
+              <p className="text-gray-500 text-xs mt-2">Koszt: {totalFoodCost.toLocaleString('pl')} zl</p>
+              <p className="text-gray-600 text-[10px]">Cel: &lt;30%</p>
             </div>
           </div>
 
-          {/* Bottom row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Top dishes */}
+          {/* Middle row: top dishes + worker hours */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
               <h2 className="text-white font-bold text-sm mb-4">Top dania</h2>
-              {topDishes.length === 0 ? (
-                <p className="text-gray-600 text-sm text-center py-4">Brak danych</p>
-              ) : (
-                <div className="space-y-3">
-                  {topDishes.slice(0, 8).map((dish, i) => {
-                    const maxQty = topDishes[0]?.quantity || 1
+              {topDishes.length === 0 ? <p className="text-gray-600 text-sm text-center py-4">Brak danych</p> : (
+                <div className="space-y-2">
+                  {topDishes.map((d, i) => {
+                    const maxQ = topDishes[0]?.quantity || 1
                     return (
                       <div key={i} className="flex items-center gap-3">
-                        <span className="text-gray-600 text-xs font-mono w-5 text-right">{i + 1}</span>
+                        <span className="text-gray-600 text-xs w-5 text-right">{i + 1}</span>
                         <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-gray-300 text-xs truncate">{dish.name}</span>
-                            <span className="text-indigo-400 text-xs font-bold ml-2">{dish.quantity}x</span>
+                          <div className="flex justify-between mb-0.5">
+                            <span className="text-gray-300 text-xs truncate">{d.name}</span>
+                            <span className="text-indigo-400 text-xs font-bold ml-2">{d.quantity}x</span>
                           </div>
                           <div className="w-full bg-gray-800 rounded-full h-1.5">
-                            <div
-                              className="bg-indigo-500 h-1.5 rounded-full"
-                              style={{ width: `${(dish.quantity / maxQty) * 100}%` }}
-                            />
+                            <div className="bg-indigo-500 h-1.5 rounded-full" style={{ width: `${(d.quantity / maxQ) * 100}%` }} />
                           </div>
                         </div>
                       </div>
@@ -332,53 +246,112 @@ export default function OwnerDashboard() {
               )}
             </div>
 
-            {/* Worker costs */}
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
-              <h2 className="text-white font-bold text-sm mb-4">Koszty zespolu</h2>
-              {workerCosts.length === 0 ? (
-                <p className="text-gray-600 text-sm text-center py-4">Brak danych</p>
-              ) : (
-                <div className="space-y-3">
-                  {workerCosts.map((w, i) => {
-                    const maxCost = workerCosts[0]?.cost || 1
-                    return (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-sm">
-                          👤
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-gray-300 text-xs">{w.name}</span>
-                            <div className="text-right">
-                              <span className="text-blue-400 text-xs font-bold">{w.cost} zl</span>
-                              <span className="text-gray-600 text-[10px] ml-1">({w.hours}h)</span>
-                            </div>
-                          </div>
-                          <div className="w-full bg-gray-800 rounded-full h-1.5">
-                            <div
-                              className="bg-blue-500 h-1.5 rounded-full"
-                              style={{ width: `${(w.cost / maxCost) * 100}%` }}
-                            />
-                          </div>
-                        </div>
+              <h2 className="text-white font-bold text-sm mb-4">Godziny zespolu</h2>
+              {workerHours.length === 0 ? <p className="text-gray-600 text-sm text-center py-4">Brak danych z GoPOS</p> : (
+                <div className="space-y-2">
+                  {workerHours.map((w, i) => (
+                    <div key={i} className="flex items-center justify-between py-1 border-b border-gray-800/50 last:border-0">
+                      <span className="text-gray-300 text-xs">{w.name}</span>
+                      <div className="text-right">
+                        <span className="text-white text-xs font-bold">{w.hours}h</span>
+                        {w.cost > 0 && <span className="text-gray-500 text-[10px] ml-2">{w.cost} zl</span>}
                       </div>
-                    )
-                  })}
-                  <div className="pt-2 border-t border-gray-800 flex justify-between text-xs">
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-gray-700 flex justify-between text-xs">
                     <span className="text-gray-500">Lacznie</span>
-                    <span className="text-white font-bold">{totalLabor.toLocaleString('pl')} zl ({laborPct}% przychodu)</span>
+                    <span className="text-white font-bold">{workerHours.reduce((s, w) => s + w.hours, 0).toFixed(1)}h = {totalLabor.toLocaleString('pl')} zl</span>
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Status row: shifts, checklists, issues, waste */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Today's shifts */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-white font-bold text-xs mb-3">Dzis na zmianie</h3>
+              {todayShifts.length > 0 ? (
+                <div className="space-y-1">
+                  {todayShifts.map((s: any, i: number) => (
+                    <p key={i} className="text-gray-300 text-xs">{s.profiles?.full_name || '?'} <span className="text-gray-600">({s.profiles?.role})</span></p>
+                  ))}
+                </div>
+              ) : <p className="text-gray-600 text-xs">Brak danych grafiku</p>}
+            </div>
+
+            {/* Checklist today */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-white font-bold text-xs mb-3">Checklisty dzis</h3>
+              <p className={`text-2xl font-black ${checklistCount > 0 ? 'text-green-400' : 'text-gray-600'}`}>{checklistCount}</p>
+              <p className="text-gray-600 text-[10px] mt-1">wykonanych</p>
+            </div>
+
+            {/* Temperatures */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-white font-bold text-xs mb-3">Temperatury dzis</h3>
+              {tempAlerts.length > 0 ? (
+                <div className="space-y-1">
+                  {tempAlerts.slice(0, 3).map((t: any, i: number) => (
+                    <p key={i} className="text-xs"><span className="text-gray-400">{t.device_name}:</span> <span className="text-white font-bold">{t.temperature}°C</span></p>
+                  ))}
+                </div>
+              ) : <p className="text-gray-600 text-xs">Brak pomiarow</p>}
+            </div>
+
+            {/* Meals */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5">
+              <h3 className="text-white font-bold text-xs mb-3">Posilki ({period === 'week' ? '7 dni' : 'miesiac'})</h3>
+              <p className="text-2xl font-black text-white">{mealCount}</p>
+              <p className="text-gray-600 text-[10px] mt-1">posilkow pracowniczych</p>
+            </div>
+          </div>
+
+          {/* Issues + Waste */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
+              <h2 className="text-white font-bold text-sm mb-4">Otwarte awarie</h2>
+              {issuesOpen.length > 0 ? (
+                <div className="space-y-2">
+                  {issuesOpen.map(iss => (
+                    <div key={iss.id} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-300 text-xs">{iss.title}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${iss.status === 'new' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}>
+                        {iss.status === 'new' ? 'Nowa' : 'W trakcie'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-green-400 text-xs text-center py-4">Brak otwartych awarii</p>}
+            </div>
+
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
+              <h2 className="text-white font-bold text-sm mb-4">Straty ({period === 'week' ? '7 dni' : 'miesiac'})</h2>
+              {wasteLogs.length > 0 ? (
+                <div className="space-y-2">
+                  {wasteLogs.map((w, i) => (
+                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                      <span className="text-gray-300 text-xs">{w.item_name} — {w.quantity} szt</span>
+                      <span className="text-red-400 text-xs font-bold">{w.estimated_value} zl</span>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t border-gray-700 flex justify-between text-xs">
+                    <span className="text-gray-500">Lacznie strat</span>
+                    <span className="text-red-400 font-bold">{wasteLogs.reduce((s, w) => s + (w.estimated_value || 0), 0)} zl</span>
+                  </div>
+                </div>
+              ) : <p className="text-green-400 text-xs text-center py-4">Brak strat</p>}
             </div>
           </div>
 
           {/* Quick links */}
-          <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <QuickLink href="/owner/ai" icon="🤖" label="Zapytaj AI" desc="Asystent restauracji" />
-            <QuickLink href="/owner/sheets" icon="📋" label="Arkusze Google" desc="Raporty i dane" />
-            <QuickLink href="/owner/marketing" icon="📣" label="Marketing" desc="Kampanie i social media" />
-            <QuickLink href="/meals/menu" icon="🍽️" label="Menu pracownicze" desc="Zarzadzaj daniami" />
+            <QuickLink href="/owner/foodcost" icon="🥘" label="Food Cost" desc="Receptury i marze" />
+            <QuickLink href="/owner/sales" icon="📊" label="Sprzedaz" desc="Wykresy i ranking" />
+            <QuickLink href="/owner/staff" icon="👥" label="Zespol" desc="Godziny i posilki" />
           </div>
         </>
       )}
@@ -403,10 +376,7 @@ function KpiCard({ label, value, subtitle, icon, color, textColor }: {
 
 function QuickLink({ href, icon, label, desc }: { href: string; icon: string; label: string; desc: string }) {
   return (
-    <a
-      href={href}
-      className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 hover:bg-gray-800/50 transition-all group"
-    >
+    <a href={href} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 hover:bg-gray-800/50 transition-all group">
       <span className="text-2xl">{icon}</span>
       <p className="text-white text-sm font-bold mt-2 group-hover:text-indigo-400 transition-colors">{label}</p>
       <p className="text-gray-600 text-xs mt-0.5">{desc}</p>
