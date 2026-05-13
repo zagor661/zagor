@@ -232,18 +232,23 @@ function LoginContent() {
             <h1 className="text-3xl font-bold text-gray-900">KitchenOps</h1>
             <p className="text-gray-500 mt-2">Logowanie</p>
           </div>
-          <div className="card text-center py-8 space-y-3">
-            <p className="text-gray-700 font-medium">Użyj linku logowania od swojego lokalu</p>
-            <p className="text-gray-400 text-sm">Każda restauracja ma własny, unikalny link do logowania. Znajdziesz go u właściciela lokalu.</p>
+          <div className="card text-center py-8 space-y-4">
+            <div className="text-4xl">🔗</div>
+            <p className="text-gray-700 font-medium text-lg">Potrzebujesz link od wlasciciela</p>
+            <p className="text-gray-500 text-sm leading-relaxed">
+              Kazda restauracja ma wlasny, unikalny link do logowania.<br/>
+              Poproś właściciela lub menedżera o przesłanie Ci linku.
+            </p>
+            <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-400">
+              Link wygląda tak: kitchen-ops.../login?loc=...
+            </div>
           </div>
-          <div className="mt-4 space-y-3">
-            <button
-              onClick={() => router.push('/join')}
-              className="btn-orange w-full"
-            >
-              Zarejestruj nowy lokal →
+          <p className="text-center text-xs text-gray-300 mt-6">
+            Jesteś właścicielem?{' '}
+            <button onClick={() => router.push('/join')} className="text-brand-500 underline">
+              Zarejestruj nowy lokal
             </button>
-          </div>
+          </p>
         </div>
       </div>
     )
