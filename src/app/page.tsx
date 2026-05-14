@@ -543,15 +543,17 @@ export default function Dashboard() {
         )}
 
         {/* ─── GoPOS Attendance Status ─────── */}
-        {isAdmin && (attendanceSync || attendanceOffHours) && (
+        {isAdmin && (
           <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                 📡 GoPOS — Obecność
-                {attendanceSync.allClockedIn && attendanceSync.allClockedOut ? (
+                {attendanceSync && attendanceSync.allClockedIn && attendanceSync.allClockedOut ? (
                   <span className="bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">OK</span>
-                ) : attendanceSync.missing.length > 0 ? (
+                ) : attendanceSync && attendanceSync.missing.length > 0 ? (
                   <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{attendanceSync.missing.length} brak</span>
+                ) : attendanceOffHours ? (
+                  <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">POZA GODZINAMI</span>
                 ) : (
                   <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">LIVE</span>
                 )}
@@ -581,7 +583,7 @@ export default function Dashboard() {
             </div>
 
             {/* Clocked in */}
-            {attendanceSync.clockedIn.length > 0 && (
+            {attendanceSync && attendanceSync.clockedIn.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {attendanceSync.clockedIn.map((name, i) => (
                   <span key={i} className="inline-flex items-center gap-1 bg-green-50 text-green-700 text-[11px] font-medium px-2 py-1 rounded-lg border border-green-200">
@@ -592,7 +594,7 @@ export default function Dashboard() {
             )}
 
             {/* Clocked out */}
-            {attendanceSync.clockedOut.length > 0 && (
+            {attendanceSync && attendanceSync.clockedOut.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {attendanceSync.clockedOut.map((name, i) => (
                   <span key={i} className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 text-[11px] font-medium px-2 py-1 rounded-lg border border-gray-200">
@@ -603,7 +605,7 @@ export default function Dashboard() {
             )}
 
             {/* Missing */}
-            {attendanceSync.missing.length > 0 && (
+            {attendanceSync && attendanceSync.missing.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {attendanceSync.missing.map((name, i) => (
                   <span key={i} className="inline-flex items-center gap-1 bg-red-50 text-red-700 text-[11px] font-medium px-2 py-1 rounded-lg border border-red-200 animate-pulse">
@@ -613,9 +615,16 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* All good */}
-            {attendanceSync.clockedIn.length === 0 && attendanceSync.missing.length === 0 && attendanceSync.clockedOut.length === 0 && (
-              <p className="text-xs text-gray-400">Brak danych — sync co 5 min w godzinach 11:30–20:30</p>
+            {/* No data yet */}
+            {!attendanceSync && (
+              <p className="text-xs text-gray-400">
+                {attendanceOffHours ? 'Poza godzinami otwarcia (11:30–20:30). Kliknij Odśwież by zobaczyć dzisiejsze dane.' : 'Ładowanie...'}
+              </p>
+            )}
+
+            {/* Data loaded but empty */}
+            {attendanceSync && attendanceSync.clockedIn.length === 0 && attendanceSync.missing.length === 0 && attendanceSync.clockedOut.length === 0 && (
+              <p className="text-xs text-gray-400">Brak logowań w GoPOS na dziś</p>
             )}
           </div>
         )}
