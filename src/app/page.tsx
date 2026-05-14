@@ -42,9 +42,48 @@ export default function Dashboard() {
   const [aiAlerts, setAiAlerts] = useState<{ id: string; type: string; severity: string; title: string; description: string; created_at: string; is_read: boolean }[]>([])
   const [aiUnreadCount, setAiUnreadCount] = useState(0)
 
+  // Attendance sync
+  const [attendanceSync, setAttendanceSync] = useState<{
+    clockedIn: string[]; clockedOut: string[]; missing: string[];
+    allClockedIn: boolean; allClockedOut: boolean;
+  } | null>(null)
+
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
   const isAdmin = user ? isAdminRole(user.role) : false
+
+  // ─── GoPOS Attendance auto-polling (11:30–20:30, co 5 min) ───
+  useEffect(() => {
+    if (!user || !isAdmin) return
+
+    async function syncAttendance() {
+      const now = new Date()
+      const hour = now.getHours()
+      const min = now.getMinutes()
+      const timeMin = hour * 60 + min
+      // Only between 11:30 and 20:30
+      if (timeMin < 690 || timeMin > 1230) return
+      try {
+        const res = await fetch(`/api/attendance/sync?loc=${user!.location_id}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.ok) {
+            setAttendanceSync({
+              clockedIn: data.result?.clockedIn || [],
+              clockedOut: data.result?.clockedOut || [],
+              missing: data.result?.missing || [],
+              allClockedIn: data.allClockedIn,
+              allClockedOut: data.allClockedOut,
+            })
+          }
+        }
+      } catch {}
+    }
+
+    syncAttendance() // Initial sync
+    const interval = setInterval(syncAttendance, 5 * 60 * 1000) // Every 5 min
+    return () => clearInterval(interval)
+  }, [user, isAdmin])
 
   useEffect(() => {
     if (!user) return
@@ -478,6 +517,84 @@ export default function Dashboard() {
               <Link href="/ai" className="block text-center text-xs text-indigo-500 font-medium pt-1">
                 Pokaż wszystkie ({aiAlerts.length})
               </Link>
+            )}
+          </div>
+        )}
+
+        {/* ─── GoPOS Attendance Status ─────── */}
+        {isAdmin && attendanceSync && (
+          <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                📡 GoPOS — Obecność
+                {attendanceSync.allClockedIn && attendanceSync.allClockedOut ? (
+                  <span className="bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">OK</span>
+                ) : attendanceSync.missing.length > 0 ? (
+                  <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{attendanceSync.missing.length} brak</span>
+                ) : (
+                  <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">LIVE</span>
+                )}
+              </h2>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/attendance/sync?loc=${user.location_id}`)
+                    if (res.ok) {
+                      const data = await res.json()
+                      if (data.ok) {
+                        setAttendanceSync({
+                          clockedIn: data.result?.clockedIn || [],
+                          clockedOut: data.result?.clockedOut || [],
+                          missing: data.result?.missing || [],
+                          allClockedIn: data.allClockedIn,
+                          allClockedOut: data.allClockedOut,
+                        })
+                      }
+                    }
+                  } catch {}
+                }}
+                className="text-[10px] text-blue-500 font-medium"
+              >
+                Odśwież
+              </button>
+            </div>
+
+            {/* Clocked in */}
+            {attendanceSync.clockedIn.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {attendanceSync.clockedIn.map((name, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-green-50 text-green-700 text-[11px] font-medium px-2 py-1 rounded-lg border border-green-200">
+                    ✅ {name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Clocked out */}
+            {attendanceSync.clockedOut.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {attendanceSync.clockedOut.map((name, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-gray-50 text-gray-500 text-[11px] font-medium px-2 py-1 rounded-lg border border-gray-200">
+                    🏠 {name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Missing */}
+            {attendanceSync.missing.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {attendanceSync.missing.map((name, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 bg-red-50 text-red-700 text-[11px] font-medium px-2 py-1 rounded-lg border border-red-200 animate-pulse">
+                    🚨 {name} — brak logowania!
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* All good */}
+            {attendanceSync.clockedIn.length === 0 && attendanceSync.missing.length === 0 && attendanceSync.clockedOut.length === 0 && (
+              <p className="text-xs text-gray-400">Brak danych — sync co 5 min w godzinach 11:30–20:30</p>
             )}
           </div>
         )}
