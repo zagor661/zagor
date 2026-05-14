@@ -47,6 +47,7 @@ export default function Dashboard() {
     clockedIn: string[]; clockedOut: string[]; missing: string[];
     allClockedIn: boolean; allClockedOut: boolean;
   } | null>(null)
+  const [attendanceOffHours, setAttendanceOffHours] = useState(false)
 
   const role: RoleType = user ? normalizeRole(user.role) : 'kitchen'
   const roleConfig = ROLES[role]
@@ -61,8 +62,28 @@ export default function Dashboard() {
       const hour = now.getHours()
       const min = now.getMinutes()
       const timeMin = hour * 60 + min
-      // Only between 11:30 and 20:30
-      if (timeMin < 690 || timeMin > 1230) return
+      // Only poll between 11:30 and 20:30
+      if (timeMin < 690 || timeMin > 1230) {
+        setAttendanceOffHours(true)
+        // Still fetch once to show today's summary
+        try {
+          const res = await fetch(`/api/attendance/sync?loc=${user!.location_id}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.ok) {
+              setAttendanceSync({
+                clockedIn: data.result?.clockedIn || [],
+                clockedOut: data.result?.clockedOut || [],
+                missing: data.result?.missing || [],
+                allClockedIn: data.allClockedIn,
+                allClockedOut: data.allClockedOut,
+              })
+            }
+          }
+        } catch {}
+        return
+      }
+      setAttendanceOffHours(false)
       try {
         const res = await fetch(`/api/attendance/sync?loc=${user!.location_id}`)
         if (res.ok) {
@@ -522,7 +543,7 @@ export default function Dashboard() {
         )}
 
         {/* ─── GoPOS Attendance Status ─────── */}
-        {isAdmin && attendanceSync && (
+        {isAdmin && (attendanceSync || attendanceOffHours) && (
           <div className="rounded-2xl bg-white border border-gray-200 p-4 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
