@@ -110,24 +110,47 @@ export async function GET(req: NextRequest) {
       return s.toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
     }
 
+    // Polish diminutive → formal name mapping
+    const DIMINUTIVES: Record<string, string[]> = {
+      'maciek': ['maciej'], 'maciej': ['maciek'],
+      'kasia': ['katarzyna'], 'katarzyna': ['kasia', 'kaska'],
+      'michal': ['misiek', 'michas'], 'misiek': ['michal'],
+      'piotrek': ['piotr'], 'piotr': ['piotrek'],
+      'zuzia': ['zuzanna'], 'zuzanna': ['zuzia', 'zuza'],
+      'tomek': ['tomasz'], 'tomasz': ['tomek'],
+      'dawid': ['dawidek'], 'jurek': ['jerzy', 'yurii'],
+      'yurii': ['jurek', 'yuri', 'jurij'], 'yuri': ['yurii'],
+    }
+
     const matchLog: { gopos: string; matched: string | null }[] = []
 
     function matchProfile(empName: string) {
       const eNorm = norm(empName)
       const eParts = eNorm.split(/\s+/)
+      const eFirst = eParts[0]
+      const eLast = eParts.length > 1 ? eParts[eParts.length - 1] : null
 
       const match = profiles!.find(p => {
         const pNorm = norm(p.full_name)
         const pParts = pNorm.split(/\s+/)
+        const pFirst = pParts[0]
 
-        // Exact match (after normalization)
+        // 1. Exact match (after normalization)
         if (pNorm === eNorm) return true
-        // One contains the other
-        if (pNorm.includes(eNorm) || eNorm.includes(pNorm)) return true
-        // First name match (at least 3 chars to avoid false positives)
-        if (eParts[0].length >= 3 && pParts[0] === eParts[0]) return true
-        // Last name match
-        if (eParts.length > 1 && pParts.length > 1 && eParts[eParts.length - 1] === pParts[pParts.length - 1]) return true
+        // 2. Profile name found inside GoPOS name (e.g. "Maciek" in "Maciek Słonowski")
+        //    or GoPOS name found inside profile name
+        if (eNorm.includes(pNorm) || pNorm.includes(eNorm)) return true
+        // 3. GoPOS first name matches profile name exactly
+        if (eFirst.length >= 3 && pFirst === eFirst) return true
+        // 4. GoPOS last name matches profile name (rare but possible)
+        if (eLast && eLast.length >= 3 && pFirst === eLast) return true
+        // 5. Diminutive matching: "Maciek" ↔ "Maciej"
+        const pDiminutives = DIMINUTIVES[pFirst] || []
+        if (pDiminutives.includes(eFirst)) return true
+        const eDiminutives = DIMINUTIVES[eFirst] || []
+        if (eDiminutives.includes(pFirst)) return true
+        // 6. First 4 chars match (handles Maci-ek vs Maci-ej etc.)
+        if (eFirst.length >= 4 && pFirst.length >= 4 && eFirst.slice(0, 4) === pFirst.slice(0, 4)) return true
         return false
       })
 
