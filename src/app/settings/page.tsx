@@ -94,12 +94,23 @@ export default function SettingsPage() {
 
   async function loadProfiles() {
     setLoadingProfiles(true)
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, role, pin, is_active')
+    // Query through user_locations junction table (same as login API)
+    const { data: links } = await supabase
+      .from('user_locations')
+      .select('user_id')
       .eq('location_id', user!.location_id)
-      .order('full_name')
-    if (data) setProfiles(data)
+
+    if (links && links.length > 0) {
+      const userIds = links.map(l => l.user_id)
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role, pin, is_active')
+        .in('id', userIds)
+        .order('full_name')
+      if (data) setProfiles(data)
+    } else {
+      setProfiles([])
+    }
     setLoadingProfiles(false)
   }
 
