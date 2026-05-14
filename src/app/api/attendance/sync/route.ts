@@ -345,12 +345,14 @@ export async function GET(req: NextRequest) {
                 }
 
                 // Log notification to avoid spam
-                await supabase.from('notification_log').insert({
-                  profile_id: shift.worker_id,
-                  location_id: locationId,
-                  tag: 'gopos-missing',
-                  sent_at: new Date().toISOString(),
-                }).catch(() => {})
+                try {
+                  await supabase.from('notification_log').insert({
+                    profile_id: shift.worker_id,
+                    location_id: locationId,
+                    tag: 'gopos-missing',
+                    sent_at: new Date().toISOString(),
+                  })
+                } catch {}
               }
             }
           }
