@@ -105,16 +105,34 @@ export async function GET(req: NextRequest) {
     }
 
     // ─── 3. Match GoPOS employees to profiles ────────────────
+    // Normalize: strip diacritics + lowercase
+    function norm(s: string) {
+      return s.toLowerCase().trim().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    }
+
+    const matchLog: { gopos: string; matched: string | null }[] = []
+
     function matchProfile(empName: string) {
-      const eLower = empName.toLowerCase().trim()
-      return profiles!.find(p => {
-        const pLower = p.full_name.toLowerCase().trim()
-        return pLower === eLower
-          || pLower.includes(eLower)
-          || eLower.includes(pLower)
-          // Handle first name only match
-          || pLower.split(' ')[0] === eLower.split(' ')[0]
+      const eNorm = norm(empName)
+      const eParts = eNorm.split(/\s+/)
+
+      const match = profiles!.find(p => {
+        const pNorm = norm(p.full_name)
+        const pParts = pNorm.split(/\s+/)
+
+        // Exact match (after normalization)
+        if (pNorm === eNorm) return true
+        // One contains the other
+        if (pNorm.includes(eNorm) || eNorm.includes(pNorm)) return true
+        // First name match (at least 3 chars to avoid false positives)
+        if (eParts[0].length >= 3 && pParts[0] === eParts[0]) return true
+        // Last name match
+        if (eParts.length > 1 && pParts.length > 1 && eParts[eParts.length - 1] === pParts[pParts.length - 1]) return true
+        return false
       })
+
+      matchLog.push({ gopos: empName, matched: match?.full_name || null })
+      return match
     }
 
     // ─── 4. Get existing clock_logs for today ────────────────
@@ -345,6 +363,12 @@ export async function GET(req: NextRequest) {
       allClockedOut,
       todayWorkTimes: allWorkTimes.length,
       todayShifts: shifts?.length || 0,
+      debug: {
+        matchLog,
+        profiles: profiles.map(p => ({ id: p.id, name: p.full_name, role: p.role })),
+        goposNames: allWorkTimes.map(wt => wt.employee_name || wt.employee?.name || `${wt.employee?.first_name || ''} ${wt.employee?.last_name || ''}`.trim()),
+        shifts: shifts?.map(s => ({ worker_id: s.worker_id, start: s.start_time, status: s.status })) || [],
+      },
     })
 
   } catch (err: any) {
