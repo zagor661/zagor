@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getWorkTimes } from '@/lib/gopos'
+import { getWorkTimes, getEmployees } from '@/lib/gopos'
 import { sendPushToLocation, type PushSubscription, type PushPayload } from '@/lib/webpush'
 
 export const runtime = 'nodejs'
@@ -89,20 +89,32 @@ export async function GET(req: NextRequest) {
       const data: any[] = res?.data || []
       if (data.length === 0) break
 
-      // Filter for today only
+      // Filter for today only (GoPOS uses start_at, not started_at)
       for (const wt of data) {
-        const startDate = wt.started_at ? wt.started_at.split('T')[0] : null
+        const startDate = wt.start_at ? wt.start_at.split('T')[0] : null
         if (startDate === todayStr) {
           allWorkTimes.push(wt)
         }
       }
 
       // If we got records older than today, we can stop
-      const oldestDate = data[data.length - 1]?.started_at?.split('T')[0]
+      const oldestDate = data[data.length - 1]?.start_at?.split('T')[0]
       if (oldestDate && oldestDate < todayStr) break
       if (data.length < 20) break
       page++
     }
+
+    // ─── 2b. Fetch GoPOS employee list to map id → name ─────
+    const goposEmployees: Record<number, string> = {}
+    try {
+      const empRes = await getEmployees(orgId)
+      const empList: any[] = empRes?.data || empRes || []
+      for (const emp of empList) {
+        const id = emp.id
+        const name = emp.name || `${emp.first_name || ''} ${emp.last_name || ''}`.trim()
+        if (id && name) goposEmployees[id] = name
+      }
+    } catch {}
 
     // ─── 3. Match GoPOS employees to profiles ────────────────
     // Normalize: strip diacritics + lowercase
@@ -172,16 +184,17 @@ export async function GET(req: NextRequest) {
 
     // ─── 5. Sync each work_time entry ────────────────────────
     for (const wt of allWorkTimes) {
-      const empName = wt.employee_name || wt.employee?.name || `${wt.employee?.first_name || ''} ${wt.employee?.last_name || ''}`.trim()
+      // GoPOS returns employee_id (number), resolve to name via employee list
+      const empName = goposEmployees[wt.employee_id] || wt.employee_name || wt.employee?.name || ''
       if (!empName) continue
 
       const profile = matchProfile(empName)
       if (!profile) continue
 
       const existing = logByWorker[profile.id]
-      const clockIn = wt.started_at ? new Date(wt.started_at).toISOString() : null
-      const clockOut = wt.finished_at ? new Date(wt.finished_at).toISOString() : null
-      const hoursWorked = wt.duration ? Math.round(wt.duration / 3600 * 100) / 100 : null
+      const clockIn = wt.start_at ? new Date(wt.start_at).toISOString() : null
+      const clockOut = wt.end_at ? new Date(wt.end_at).toISOString() : null
+      const hoursWorked = wt.duration_in_minutes ? Math.round(wt.duration_in_minutes / 60 * 100) / 100 : null
 
       if (!existing) {
         // Create new clock_log — auto clock-in from GoPOS
@@ -390,8 +403,9 @@ export async function GET(req: NextRequest) {
       todayShifts: shifts?.length || 0,
       debug: {
         matchLog,
+        goposEmployeeMap: goposEmployees,
         profiles: profiles.map(p => ({ id: p.id, name: p.full_name, role: p.role })),
-        goposNames: allWorkTimes.map(wt => wt.employee_name || wt.employee?.name || `${wt.employee?.first_name || ''} ${wt.employee?.last_name || ''}`.trim()),
+        goposNames: allWorkTimes.map(wt => goposEmployees[wt.employee_id] || `emp_${wt.employee_id}`),
         shifts: shifts?.map(s => ({ worker_id: s.worker_id, start: s.start_time, status: s.status })) || [],
       },
     })
