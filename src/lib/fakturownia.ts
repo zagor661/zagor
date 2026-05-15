@@ -55,8 +55,16 @@ export async function getPurchaseInvoices(opts: {
     per_page: '25',
   }
 
-  if (opts.period) {
+  if (opts.period === 'more' && opts.dateFrom && opts.dateTo) {
+    // Custom date range — must pass all three params together
+    params.period = 'more'
+    params.date_from = opts.dateFrom
+    params.date_to = opts.dateTo
+  } else if (opts.period) {
     params.period = opts.period
+    // Also pass dates if provided (some periods may use them)
+    if (opts.dateFrom) params.date_from = opts.dateFrom
+    if (opts.dateTo) params.date_to = opts.dateTo
   } else if (opts.dateFrom && opts.dateTo) {
     params.period = 'more'
     params.date_from = opts.dateFrom
