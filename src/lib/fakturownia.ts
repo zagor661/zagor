@@ -102,8 +102,11 @@ export function summarizeInvoices(invoices: any[]): InvoiceSummary {
     summary.totalGross += gross
     summary.totalVat += vat
 
-    // Group by supplier
-    const supplier = inv.seller_name || inv.buyer_name || 'Nieznany'
+    // Group by supplier — KSeF purchase invoices have seller/buyer swapped
+    // (seller_name = our company, buyer_name = actual supplier)
+    const supplier = inv.income === false
+      ? (inv.buyer_name || inv.seller_name || 'Nieznany')
+      : (inv.seller_name || inv.buyer_name || 'Nieznany')
     if (!summary.bySupplier[supplier]) summary.bySupplier[supplier] = { count: 0, gross: 0 }
     summary.bySupplier[supplier].count++
     summary.bySupplier[supplier].gross += gross
