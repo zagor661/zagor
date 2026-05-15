@@ -17,7 +17,52 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, data: invoice })
     }
 
-    // Default: list purchase invoices
+    if (action === 'all') {
+      // Paginate through ALL purchase invoices — returns summary only (no raw data) to keep response small
+      const PAGE_SIZE = 25
+      const allInvoices: any[] = []
+      let pg = 1
+
+      while (true) {
+        const batch = await getPurchaseInvoices({ page: pg, period, dateFrom, dateTo })
+        if (!batch || batch.length === 0) break
+        allInvoices.push(...batch)
+        if (batch.length < PAGE_SIZE) break
+        pg++
+        if (pg > 20) break // safety limit
+      }
+
+      const summary = summarizeInvoices(allInvoices)
+
+      return NextResponse.json({
+        ok: true,
+        totalInvoices: allInvoices.length,
+        pagesLoaded: pg,
+        period,
+        dateFrom,
+        dateTo,
+        summary,
+        // Include slim invoice list (no heavy fields) for analysis
+        invoices: allInvoices.map(inv => ({
+          id: inv.id,
+          number: inv.number,
+          issue_date: inv.issue_date,
+          sell_date: inv.sell_date,
+          buyer_name: inv.buyer_name,
+          seller_name: inv.seller_name,
+          price_net: inv.price_net,
+          price_gross: inv.price_gross,
+          price_tax: inv.price_tax,
+          status: inv.status,
+          payment_status: inv.payment_status,
+          product_cache: inv.product_cache,
+          kind: inv.kind,
+          income: inv.income,
+        })),
+      })
+    }
+
+    // Default: list purchase invoices (single page)
     const invoices = await getPurchaseInvoices({ page, period, dateFrom, dateTo })
     const summary = summarizeInvoices(invoices)
 
