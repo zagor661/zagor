@@ -8,6 +8,20 @@ import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
 // GET /api/pnl?date_start=2026-05-01&date_end=2026-05-15
 
 // GoPOS employees endpoint has hourly_rate + work_times has to_pay
+// ─── Actual hourly rates (from Ewa's spreadsheet, April 2026) ──
+// GoPOS rates are WRONG — override with real values
+const RATE_OVERRIDES: Record<string, number> = {
+  'yurii dotsiak': 32,
+  'michał buczek': 29,
+  'piotr kapa': 30,
+  'maciej kuchnia': 27,
+  'katarzyna warnawin': 29,
+  'zuzanna gach': 28,
+}
+// Kuba = 1/2 UoP, fixed monthly cost (not hourly)
+const FIXED_MONTHLY_WORKERS: { name: string; monthlyCost: number }[] = [
+  { name: 'Kuba', monthlyCost: 1886.93 },
+]
 
 // ─── Supplier → category mapping ─────────────────────────
 // Food: raw ingredients & groceries
@@ -192,9 +206,13 @@ export async function GET(req: NextRequest) {
         const empId = wt.employee_id
         const emp = empMap[empId]
         const name = emp?.name || `Pracownik #${empId}`
-        const rate = wt.hourly_rate?.amount || emp?.rate || 0
+        // Use Ewa's actual rates (override GoPOS wrong rates)
+        const nameKey = name.toLowerCase()
+        const overrideRate = RATE_OVERRIDES[nameKey]
+        const rate = overrideRate || wt.hourly_rate?.amount || emp?.rate || 0
         const hours = wt.duration_in_minutes / 60
-        const cost = wt.to_pay?.amount || (hours * rate)
+        // Always calculate from correct rate, don't trust GoPOS to_pay
+        const cost = overrideRate ? (hours * overrideRate) : (wt.to_pay?.amount || (hours * rate))
 
         if (!laborByWorker[name]) laborByWorker[name] = { hours: 0, cost: 0, rate }
         laborByWorker[name].hours += hours
@@ -202,6 +220,17 @@ export async function GET(req: NextRequest) {
         laborByWorker[name].rate = rate
         totalHours += hours
         totalLabor += cost
+      }
+
+      // Add fixed monthly workers (prorated for the period)
+      const periodDays = Math.max(1, Math.ceil((new Date(dateEnd).getTime() - new Date(dateStart).getTime()) / 86400000) + 1)
+      const daysInMonth = new Date(new Date(dateStart).getFullYear(), new Date(dateStart).getMonth() + 1, 0).getDate()
+      for (const fw of FIXED_MONTHLY_WORKERS) {
+        const proratedCost = (fw.monthlyCost / daysInMonth) * periodDays
+        if (!laborByWorker[fw.name]) laborByWorker[fw.name] = { hours: 0, cost: 0, rate: 0 }
+        laborByWorker[fw.name].cost += Math.round(proratedCost)
+        laborByWorker[fw.name].rate = fw.monthlyCost // show monthly for reference
+        totalLabor += Math.round(proratedCost)
       }
     } catch (e: any) {
       console.error('[PNL] Labor calc error:', e.message)
