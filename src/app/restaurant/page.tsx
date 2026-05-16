@@ -19,6 +19,15 @@ interface OrderStats {
 
 type Period = 'today' | 'week' | 'month'
 
+interface PnlSummary {
+  revenue: number; costs: number; result: number; resultLabel: string
+  purchases: { total: { pctOfRevenue: number }; food: { gross: number; pctOfRevenue: number }; beverage: { gross: number; pctOfRevenue: number }; other: { gross: number; pctOfRevenue: number } }
+  foodCost: { actualPct: number; theoreticalPct: number; differencePct: number }
+  labor: { total: number; pctOfRevenue: number }
+  profitLoss: { pctOfRevenue: number; isProfit: boolean; perDay: number }
+  period: { days: number }
+}
+
 export default function RestaurantPage() {
   const router = useRouter()
   const { user } = useUser()
@@ -29,6 +38,7 @@ export default function RestaurantPage() {
   const [employeesData, setEmployeesData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [pnl, setPnl] = useState<PnlSummary | null>(null)
 
   // Access control
   useEffect(() => {
@@ -36,6 +46,26 @@ export default function RestaurantPage() {
       router.push('/')
     }
   }, [user, router])
+
+  // Fetch P&L once
+  useEffect(() => {
+    fetch(`/api/pnl?date_start=2026-05-01&date_end=${new Date().toISOString().split('T')[0]}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) setPnl({
+          revenue: d.summary.revenue,
+          costs: d.summary.costs,
+          result: d.summary.result,
+          resultLabel: d.summary.resultLabel,
+          purchases: d.purchases,
+          foodCost: d.foodCost,
+          labor: d.labor,
+          profitLoss: d.profitLoss,
+          period: d.period,
+        })
+      })
+      .catch(() => {})
+  }, [])
 
   // Fetch data on period change
   useEffect(() => {
@@ -145,6 +175,48 @@ export default function RestaurantPage() {
           </div>
         ) : (
           <>
+            {/* ─── P&L Counter (od 1 maja) ─── */}
+            {pnl && (
+              <div className={`rounded-2xl p-4 mb-4 ${
+                pnl.profitLoss.isProfit
+                  ? 'bg-emerald-50 border border-emerald-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{pnl.profitLoss.isProfit ? '📈' : '📉'}</span>
+                    <span className={`text-xs font-bold ${pnl.profitLoss.isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                      Wynik od 1 maja ({pnl.period.days} dni)
+                    </span>
+                  </div>
+                </div>
+                <p className={`text-3xl font-black ${pnl.profitLoss.isProfit ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {pnl.profitLoss.isProfit ? '+' : ''}{pnl.result.toLocaleString('pl-PL')} zl
+                </p>
+                <div className="flex gap-4 mt-2 text-xs">
+                  <span className="text-gray-500">Przychod: <b className="text-gray-700">{pnl.revenue.toLocaleString('pl-PL')} zl</b></span>
+                  <span className="text-gray-500">Koszty: <b className="text-gray-700">{pnl.costs.toLocaleString('pl-PL')} zl</b></span>
+                </div>
+                <div className="flex gap-4 mt-1 text-[10px] text-gray-400">
+                  <span>🥩 Food: {pnl.purchases.food.pctOfRevenue}%</span>
+                  {pnl.purchases.beverage.gross > 0 && <span>🥤 Napoje: {pnl.purchases.beverage.pctOfRevenue}%</span>}
+                  <span>👥 Praca: {pnl.labor.pctOfRevenue}%</span>
+                  <span>~{pnl.profitLoss.perDay.toLocaleString('pl-PL')} zl/dzien</span>
+                </div>
+                {pnl.foodCost && pnl.foodCost.theoreticalPct > 0 && (
+                  <div className={`flex gap-3 mt-2 text-[10px] px-2 py-1 rounded-lg ${
+                    pnl.foodCost.differencePct > 2 ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                  }`}>
+                    <span>FC faktury: {pnl.foodCost.actualPct}%</span>
+                    <span>FC receptury: {pnl.foodCost.theoreticalPct}%</span>
+                    <span className="font-bold">
+                      {pnl.foodCost.differencePct > 0 ? '⚠️' : '✓'} {pnl.foodCost.differencePct > 0 ? '+' : ''}{pnl.foodCost.differencePct}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ─── Revenue cards ─── */}
             <div className="grid grid-cols-2 gap-3 mb-6">
               <StatCard

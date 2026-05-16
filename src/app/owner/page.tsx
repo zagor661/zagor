@@ -9,6 +9,18 @@ interface DailySale { date: string; revenue: number; net_revenue: number; quanti
 interface ItemSale { name: string; quantity: number; revenue: number }
 interface Issue { id: string; title: string; status: string; created_at: string }
 interface WastLog { item_name: string; quantity: number; estimated_value: number; created_at: string }
+interface CostCat { gross: number; count: number; pctOfRevenue: number; bySupplier: { name: string; gross: number }[] }
+interface PnlData {
+  revenue: { total: number; transactions: number; avgPerDay: number }
+  purchases: {
+    total: { gross: number; invoiceCount: number; pctOfRevenue: number }
+    food: CostCat; beverage: CostCat; other: CostCat
+  }
+  foodCost: { actual: number; actualPct: number; theoretical: number; theoreticalPct: number; difference: number; differencePct: number }
+  labor: { total: number; hours: number; pctOfRevenue: number; byWorker: { name: string; hours: number; cost: number }[] }
+  profitLoss: { amount: number; pctOfRevenue: number; isProfit: boolean; perDay: number }
+  period: { start: string; end: string; days: number }
+}
 
 export default function OwnerDashboard() {
   const { user } = useUser()
@@ -30,6 +42,9 @@ export default function OwnerDashboard() {
   const [tempAlerts, setTempAlerts] = useState<any[]>([])
   const [aiAlerts, setAiAlerts] = useState<{ id: string; type: string; severity: string; title: string; description: string; created_at: string; is_read: boolean }[]>([])
   const [aiUnreadCount, setAiUnreadCount] = useState(0)
+  const [pnl, setPnl] = useState<PnlData | null>(null)
+  const [pnlLoading, setPnlLoading] = useState(true)
+  const [pnlExpanded, setPnlExpanded] = useState(false)
 
   const getRange = useCallback(() => {
     const end = new Date().toISOString().split('T')[0]
@@ -132,6 +147,16 @@ export default function OwnerDashboard() {
         }
       } catch {}
 
+      // P&L — always from May 1st to today
+      try {
+        setPnlLoading(true)
+        const pnlRes = await fetch(`/api/pnl?date_start=2026-05-01&date_end=${new Date().toISOString().split('T')[0]}`)
+        if (pnlRes.ok) {
+          const pj = await pnlRes.json()
+          if (pj.ok) setPnl(pj)
+        }
+      } catch {} finally { setPnlLoading(false) }
+
     } catch (err) {
       console.error('[Dashboard]', err)
     }
@@ -173,6 +198,181 @@ export default function OwnerDashboard() {
         </div>
       ) : (
         <>
+          {/* ═══ P&L COUNTER — od 1 maja ═══ */}
+          {pnlLoading ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8 animate-pulse">
+              <div className="h-6 bg-gray-800 rounded w-48 mb-4" />
+              <div className="h-12 bg-gray-800 rounded w-64" />
+            </div>
+          ) : pnl ? (
+            <div className={`rounded-2xl border p-6 mb-8 transition-all ${
+              pnl.profitLoss.isProfit
+                ? 'bg-gradient-to-r from-green-950/60 to-green-900/20 border-green-800'
+                : 'bg-gradient-to-r from-red-950/60 to-red-900/20 border-red-800'
+            }`}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{pnl.profitLoss.isProfit ? '📈' : '📉'}</span>
+                  <div>
+                    <h2 className="text-white font-bold text-sm">Wynik od 1 maja</h2>
+                    <p className="text-gray-500 text-[10px]">{pnl.period.start} — {pnl.period.end} ({pnl.period.days} dni)</p>
+                  </div>
+                </div>
+                <button onClick={() => setPnlExpanded(!pnlExpanded)} className="text-gray-400 hover:text-white text-xs">
+                  {pnlExpanded ? 'Zwiń ▲' : 'Rozwiń ▼'}
+                </button>
+              </div>
+
+              {/* Main result */}
+              <div className="flex items-end gap-6 mb-4">
+                <div>
+                  <p className={`text-4xl font-black tracking-tight ${pnl.profitLoss.isProfit ? 'text-green-400' : 'text-red-400'}`}>
+                    {pnl.profitLoss.isProfit ? '+' : ''}{pnl.profitLoss.amount.toLocaleString('pl')} zl
+                  </p>
+                  <p className={`text-xs font-bold mt-1 ${pnl.profitLoss.isProfit ? 'text-green-500' : 'text-red-500'}`}>
+                    {pnl.profitLoss.isProfit ? 'ZYSK' : 'STRATA'} ({pnl.profitLoss.pctOfRevenue}% przychodu)
+                  </p>
+                </div>
+                <div className="text-right text-gray-500 text-xs">
+                  <p>~{pnl.profitLoss.perDay.toLocaleString('pl')} zl / dzien</p>
+                  <p>{pnl.revenue.transactions} transakcji</p>
+                </div>
+              </div>
+
+              {/* Revenue bar breakdown */}
+              <div className="space-y-2 mb-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-xs">Przychod (GoPOS)</span>
+                  <span className="text-white text-xs font-bold">{pnl.revenue.total.toLocaleString('pl')} zl</span>
+                </div>
+                <div className="w-full bg-gray-800 rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '100%' }} />
+                </div>
+
+                {/* Food cost — actual from invoices */}
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-xs">🥩 Food cost ({pnl.purchases.food.count} fv)</span>
+                  <span className="text-amber-400 text-xs font-bold">-{Math.round(pnl.purchases.food.gross).toLocaleString('pl')} zl ({pnl.purchases.food.pctOfRevenue}%)</span>
+                </div>
+                <div className="w-full bg-gray-800 rounded-full h-2">
+                  <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${Math.min(pnl.purchases.food.pctOfRevenue, 100)}%` }} />
+                </div>
+
+                {/* Beverage cost */}
+                {pnl.purchases.beverage.gross > 0 && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400 text-xs">🥤 Napoje ({pnl.purchases.beverage.count} fv)</span>
+                      <span className="text-cyan-400 text-xs font-bold">-{Math.round(pnl.purchases.beverage.gross).toLocaleString('pl')} zl ({pnl.purchases.beverage.pctOfRevenue}%)</span>
+                    </div>
+                    <div className="w-full bg-gray-800 rounded-full h-2">
+                      <div className="bg-cyan-500 h-2 rounded-full" style={{ width: `${Math.min(pnl.purchases.beverage.pctOfRevenue, 100)}%` }} />
+                    </div>
+                  </>
+                )}
+
+                {/* Other costs */}
+                {pnl.purchases.other.gross > 0 && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400 text-xs">📋 Inne ({pnl.purchases.other.count} fv)</span>
+                      <span className="text-purple-400 text-xs font-bold">-{Math.round(pnl.purchases.other.gross).toLocaleString('pl')} zl ({pnl.purchases.other.pctOfRevenue}%)</span>
+                    </div>
+                    <div className="w-full bg-gray-800 rounded-full h-2">
+                      <div className="bg-purple-500 h-2 rounded-full" style={{ width: `${Math.min(pnl.purchases.other.pctOfRevenue, 100)}%` }} />
+                    </div>
+                  </>
+                )}
+
+                {/* Labor */}
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400 text-xs">👥 Koszty pracy ({pnl.labor.hours}h)</span>
+                  <span className="text-blue-400 text-xs font-bold">-{pnl.labor.total.toLocaleString('pl')} zl ({pnl.labor.pctOfRevenue}%)</span>
+                </div>
+                <div className="w-full bg-gray-800 rounded-full h-2">
+                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(pnl.labor.pctOfRevenue, 100)}%` }} />
+                </div>
+              </div>
+
+              {/* Food Cost: Actual vs Theoretical comparison */}
+              {pnl.foodCost && pnl.foodCost.theoretical > 0 && (
+                <div className="mt-3 p-3 bg-gray-800/50 rounded-xl">
+                  <h3 className="text-gray-400 text-[10px] font-bold mb-2 uppercase tracking-wider">Food cost — faktury vs receptury</h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <p className="text-gray-500 text-[10px]">Faktury (actual)</p>
+                      <p className="text-amber-400 text-sm font-bold">{pnl.foodCost.actualPct}%</p>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-gray-500 text-[10px]">Receptury (target)</p>
+                      <p className="text-gray-300 text-sm font-bold">{pnl.foodCost.theoreticalPct}%</p>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-gray-500 text-[10px]">Roznica</p>
+                      <p className={`text-sm font-bold ${pnl.foodCost.differencePct > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {pnl.foodCost.differencePct > 0 ? '+' : ''}{pnl.foodCost.differencePct}%
+                      </p>
+                    </div>
+                  </div>
+                  {pnl.foodCost.differencePct > 2 && (
+                    <p className="text-red-400/80 text-[10px] mt-2">⚠️ Actual FC wyzszy od receptur o {pnl.foodCost.differencePct}pp — sprawdz porcjowanie i waste</p>
+                  )}
+                  {pnl.foodCost.differencePct <= 0 && (
+                    <p className="text-green-400/80 text-[10px] mt-2">✓ Actual FC nizszy lub rowny recepturom — dobra kontrola</p>
+                  )}
+                </div>
+              )}
+
+              {/* Expanded details */}
+              {pnlExpanded && (
+                <div className="mt-4 pt-4 border-t border-gray-700/50 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Food suppliers */}
+                  <div>
+                    <h3 className="text-gray-400 text-xs font-bold mb-2">🥩 DOSTAWCY ŻYWNOŚCI</h3>
+                    {pnl.purchases.food.bySupplier.slice(0, 5).map((s, i) => (
+                      <div key={i} className="flex items-center justify-between py-1">
+                        <span className="text-gray-300 text-xs truncate">{s.name}</span>
+                        <span className="text-amber-400 text-xs font-bold ml-2">{Math.round(s.gross).toLocaleString('pl')} zl</span>
+                      </div>
+                    ))}
+                    {pnl.purchases.beverage.bySupplier.length > 0 && (
+                      <>
+                        <h3 className="text-gray-400 text-xs font-bold mb-2 mt-3">🥤 NAPOJE</h3>
+                        {pnl.purchases.beverage.bySupplier.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between py-1">
+                            <span className="text-gray-300 text-xs truncate">{s.name}</span>
+                            <span className="text-cyan-400 text-xs font-bold ml-2">{Math.round(s.gross).toLocaleString('pl')} zl</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {pnl.purchases.other.bySupplier.length > 0 && (
+                      <>
+                        <h3 className="text-gray-400 text-xs font-bold mb-2 mt-3">📋 INNE</h3>
+                        {pnl.purchases.other.bySupplier.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between py-1">
+                            <span className="text-gray-300 text-xs truncate">{s.name}</span>
+                            <span className="text-purple-400 text-xs font-bold ml-2">{Math.round(s.gross).toLocaleString('pl')} zl</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                  {/* Workers */}
+                  <div>
+                    <h3 className="text-gray-400 text-xs font-bold mb-2">👥 KOSZTY PRACY</h3>
+                    {pnl.labor.byWorker.slice(0, 5).map((w, i) => (
+                      <div key={i} className="flex items-center justify-between py-1">
+                        <span className="text-gray-300 text-xs">{w.name} ({w.hours}h)</span>
+                        <span className="text-blue-400 text-xs font-bold ml-2">{w.cost.toLocaleString('pl')} zl</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             <KpiCard label="Przychod" value={`${totalRevenue.toLocaleString('pl')} zl`} icon="💰" color="from-green-500/20 to-green-600/5" textColor="text-green-400" />
