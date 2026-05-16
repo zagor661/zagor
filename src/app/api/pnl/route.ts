@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrderItemsReport, getOrderItemsReportByProduct } from '@/lib/gopos'
 import { getPurchaseInvoices } from '@/lib/fakturownia'
-import { createClient } from '@supabase/supabase-js'
+// Supabase not needed — GoPOS provides employee rates + to_pay directly
 import { DEFAULT_RECIPES } from '@/lib/foodcostRecipes'
 
 // P&L endpoint — aggregates revenue, purchase costs, labor costs
 // GET /api/pnl?date_start=2026-05-01&date_end=2026-05-15
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!
+// GoPOS employees endpoint has hourly_rate + work_times has to_pay
 
 // ─── Supplier → category mapping ─────────────────────────
 // Food: raw ingredients & groceries
@@ -18,14 +17,16 @@ type CostCategory = 'food' | 'beverage' | 'other'
 
 function classifySupplier(name: string): CostCategory {
   const n = name.toLowerCase()
-  // Food suppliers
+  // Food suppliers — surowce, mięso, produkty spożywcze
   if (n.includes('farutex')) return 'food'
   if (n.includes('makro')) return 'food'
   if (n.includes('world of asia')) return 'food'
   if (n.includes('pilarz')) return 'food'       // mięso
+  if (n.includes('agatka')) return 'food'       // PHU AGATKA — produkty
   // Beverage suppliers
   if (n.includes('coca-cola') || n.includes('coca cola')) return 'beverage'
-  // Everything else (Abeso Media = marketing, etc.)
+  // Everything else: marketing, fuel, cleaning, services, payment fees
+  // Abeso Media, PreZero, ULEX HQP, myORLEN, TRAFIN OIL, Polskie ePłatności, AJC2 OZGA
   return 'other'
 }
 
@@ -162,40 +163,45 @@ export async function GET(req: NextRequest) {
       console.error('[PNL] Fakturownia error:', e.message)
     }
 
-    // ─── 3. LABOR COSTS from GoPOS work_times + Supabase hourly_rate ───
+    // ─── 3. LABOR COSTS from GoPOS work_times + employees ───
     let totalLabor = 0
     let totalHours = 0
     const laborByWorker: Record<string, { hours: number; cost: number; rate: number }> = {}
 
     try {
-      const { getAllWorkTimes } = await import('@/lib/gopos')
-      const workTimes = await getAllWorkTimes(orgId)
+      const { getAllWorkTimes, getEmployees } = await import('@/lib/gopos')
 
-      const sb = createClient(supabaseUrl, supabaseKey)
-      const { data: profiles } = await sb.from('profiles').select('full_name, hourly_rate').eq('is_active', true)
-      const profileMap = (profiles || []).reduce((acc: Record<string, number>, p: any) => {
-        acc[p.full_name.toLowerCase()] = p.hourly_rate || 0
-        return acc
-      }, {} as Record<string, number>)
+      // Build employee_id → name map from GoPOS employees
+      const employeesRes = await getEmployees(orgId)
+      const employees: any[] = employeesRes?.data || []
+      const empMap: Record<number, { name: string; rate: number }> = {}
+      for (const emp of employees) {
+        empMap[emp.id] = {
+          name: emp.name || `Pracownik #${emp.id}`,
+          rate: emp.hourly_rate?.amount || 0,
+        }
+      }
+
+      const workTimes = await getAllWorkTimes(orgId)
 
       for (const wt of workTimes) {
         const wtDate = wt.started_at ? new Date(wt.started_at).toISOString().split('T')[0] : null
         if (!wtDate || wtDate < dateStart || wtDate > dateEnd) continue
+        if (!wt.duration_in_minutes || wt.duration_in_minutes <= 0) continue
 
-        const name = wt.employee_name || wt.employee?.name ||
-          `${wt.employee?.first_name || ''} ${wt.employee?.last_name || ''}`.trim()
-        if (!name || !wt.duration) continue
-
-        const hours = wt.duration / 3600
-        const rate = Object.entries(profileMap).find(
-          ([pName]) => pName.includes(name.toLowerCase()) || name.toLowerCase().includes(pName)
-        )?.[1] || 0
+        const empId = wt.employee_id
+        const emp = empMap[empId]
+        const name = emp?.name || `Pracownik #${empId}`
+        const rate = wt.hourly_rate?.amount || emp?.rate || 0
+        const hours = wt.duration_in_minutes / 60
+        const cost = wt.to_pay?.amount || (hours * rate)
 
         if (!laborByWorker[name]) laborByWorker[name] = { hours: 0, cost: 0, rate }
         laborByWorker[name].hours += hours
-        laborByWorker[name].cost += hours * rate
+        laborByWorker[name].cost += cost
+        laborByWorker[name].rate = rate
         totalHours += hours
-        totalLabor += hours * rate
+        totalLabor += cost
       }
     } catch (e: any) {
       console.error('[PNL] Labor calc error:', e.message)
