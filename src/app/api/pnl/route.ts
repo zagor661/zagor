@@ -199,7 +199,7 @@ export async function GET(req: NextRequest) {
       const workTimes = await getAllWorkTimes(orgId)
 
       for (const wt of workTimes) {
-        const wtDate = wt.started_at ? new Date(wt.started_at).toISOString().split('T')[0] : null
+        const wtDate = (wt.start_at || wt.started_at) ? new Date(wt.start_at || wt.started_at).toISOString().split('T')[0] : null
         if (!wtDate || wtDate < dateStart || wtDate > dateEnd) continue
         if (!wt.duration_in_minutes || wt.duration_in_minutes <= 0) continue
 
